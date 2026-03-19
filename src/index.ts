@@ -270,5 +270,165 @@ server.tool(
   },
 );
 
+server.tool(
+  'get_wallet_info',
+  'Get the connected wallet address, TON balance, and account status.',
+  {},
+  async () => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      const result = await apiCall('/v1/wallet/balance');
+      const balanceTon = (BigInt(result.balance) / 1000000000n).toString();
+      const balanceFrac = (BigInt(result.balance) % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '') || '0';
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            `Address: ${result.address}`,
+            `Balance: ${balanceTon}.${balanceFrac} TON (${result.balance} nanoTON)`,
+            `Status: ${result.status}`,
+          ].join('\n'),
+        }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'get_jetton_balances',
+  'Get all jetton (token) balances in the connected wallet. Shows USDT, NOT, DOGS, and other tokens.',
+  {},
+  async () => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      const result = await apiCall('/v1/wallet/jettons');
+      if (!result.balances?.length) {
+        return { content: [{ type: 'text' as const, text: 'No jettons found in this wallet.' }] };
+      }
+      const lines = result.balances.map((b: any) => {
+        const decimals = b.decimals ?? 9;
+        const raw = BigInt(b.balance);
+        const divisor = BigInt(10 ** decimals);
+        const whole = (raw / divisor).toString();
+        const frac = (raw % divisor).toString().padStart(decimals, '0').replace(/0+$/, '') || '0';
+        return `- ${b.symbol ?? b.name ?? 'Unknown'}: ${whole}.${frac} (${b.address})`;
+      });
+      return {
+        content: [{ type: 'text' as const, text: `Jetton balances:\n${lines.join('\n')}` }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'get_transactions',
+  'Get recent transaction history for the connected wallet.',
+  {
+    limit: z.number().optional().describe('Number of transactions to return (default 10)'),
+  },
+  async ({ limit }) => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      const result = await apiCall(`/v1/wallet/transactions?limit=${limit ?? 10}`);
+      const events = result.events ?? [];
+      if (!events.length) {
+        return { content: [{ type: 'text' as const, text: 'No recent transactions.' }] };
+      }
+      const lines = events.map((e: any) => {
+        const time = new Date(e.timestamp * 1000).toISOString();
+        const actions = (e.actions ?? []).map((a: any) => a.type).join(', ');
+        return `- ${time}: ${actions || 'unknown'} ${e.is_scam ? '[SCAM]' : ''}`;
+      });
+      return {
+        content: [{ type: 'text' as const, text: `Recent transactions:\n${lines.join('\n')}` }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'get_nft_items',
+  'List NFTs owned by the connected wallet.',
+  {},
+  async () => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      const result = await apiCall('/v1/wallet/nfts');
+      const nfts = result.nfts ?? [];
+      if (!nfts.length) {
+        return { content: [{ type: 'text' as const, text: 'No NFTs found in this wallet.' }] };
+      }
+      const lines = nfts.map((n: any) =>
+        `- ${n.name ?? 'Unnamed'} ${n.collection ? `(${n.collection})` : ''} — ${n.address}`
+      );
+      return {
+        content: [{ type: 'text' as const, text: `NFTs (${nfts.length}):\n${lines.join('\n')}` }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'resolve_name',
+  'Resolve a .ton domain name to a wallet address. Use this when the user says "send to alice.ton" instead of a raw address.',
+  {
+    domain: z.string().describe('The .ton domain name to resolve (e.g. "alice.ton")'),
+  },
+  async ({ domain }) => {
+    try {
+      const result = await fetch(`${API_URL}/v1/dns/${encodeURIComponent(domain)}/resolve`);
+      const data = await result.json() as any;
+      if (!result.ok) throw new Error(data.error ?? 'Failed');
+      if (!data.address) {
+        return { content: [{ type: 'text' as const, text: `Domain "${domain}" not found or has no wallet address.` }] };
+      }
+      return {
+        content: [{ type: 'text' as const, text: `${domain} → ${data.address}` }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'get_ton_price',
+  'Get the current price of TON in USD and other currencies.',
+  {
+    currencies: z.string().optional().describe('Comma-separated currencies (default "USD")'),
+  },
+  async ({ currencies }) => {
+    try {
+      const curr = currencies || 'USD';
+      const result = await fetch(`${API_URL}/v1/market/price?tokens=TON&currencies=${curr}`);
+      const data = await result.json() as any;
+      if (!result.ok) throw new Error(data.error ?? 'Failed');
+      const tonRates = data.rates?.TON?.prices ?? {};
+      const lines = Object.entries(tonRates).map(([c, p]) => `1 TON = ${p} ${c}`);
+      return {
+        content: [{ type: 'text' as const, text: lines.length ? lines.join('\n') : 'Price data unavailable.' }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
