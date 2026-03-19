@@ -5,19 +5,20 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 
 const API_URL = process.env.AGENT_GATEWAY_API_URL ?? 'https://api.tongateway.ai';
-const TOKEN = process.env.AGENT_GATEWAY_TOKEN;
-
-if (!TOKEN) {
-  console.error('AGENT_GATEWAY_TOKEN environment variable is required');
-  process.exit(1);
-}
+let TOKEN = process.env.AGENT_GATEWAY_TOKEN || '';
 
 async function apiCall(path: string, options: RequestInit = {}) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (TOKEN) {
+    headers['Authorization'] = `Bearer ${TOKEN}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${TOKEN}`,
+      ...headers,
       ...options.headers,
     },
   });
@@ -35,6 +36,105 @@ const server = new McpServer({
 });
 
 server.tool(
+  'request_auth',
+  'Request wallet authentication. Generates a one-time link for the user to connect their TON wallet. After the user connects, use get_auth_token to retrieve the token. Use this when no token is configured.',
+  {
+    label: z.string().optional().describe('Label for this agent session (e.g. "claude-agent")'),
+  },
+  async ({ label }) => {
+    try {
+      const result = await fetch(`${API_URL}/v1/auth/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label || 'agent' }),
+      });
+      const data = await result.json() as any;
+      if (!result.ok) throw new Error(data.error ?? 'Failed');
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: [
+              `Authentication requested.`,
+              ``,
+              `Ask the user to open this link:`,
+              data.authUrl,
+              ``,
+              `Auth ID: ${data.authId}`,
+              `Expires: ${new Date(data.expiresAt).toISOString()}`,
+              ``,
+              `After the user connects their wallet, call get_auth_token with this authId to get the token.`,
+            ].join('\n'),
+          },
+        ],
+      };
+    } catch (e: any) {
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${e.message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  'get_auth_token',
+  'Check if the user has completed wallet authentication and retrieve the token. Call this after request_auth once the user has opened the link and connected their wallet.',
+  {
+    authId: z.string().describe('The authId returned by request_auth'),
+  },
+  async ({ authId }) => {
+    try {
+      const result = await fetch(`${API_URL}/v1/auth/check/${authId}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await result.json() as any;
+      if (!result.ok) throw new Error(data.error ?? 'Failed');
+
+      if (data.status === 'pending') {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: [
+                `Authentication still pending.`,
+                `The user has not connected their wallet yet.`,
+                ``,
+                `Wait a moment and try again.`,
+              ].join('\n'),
+            },
+          ],
+        };
+      }
+
+      // Store the token for future API calls
+      TOKEN = data.token;
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: [
+              `Authentication complete!`,
+              `Token received and configured.`,
+              `Wallet: ${data.address}`,
+              ``,
+              `You can now use request_transfer, get_request_status, and list_pending_requests.`,
+            ].join('\n'),
+          },
+        ],
+      };
+    } catch (e: any) {
+      return {
+        content: [{ type: 'text' as const, text: `Error: ${e.message}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
   'request_transfer',
   'Request a TON transfer from the wallet owner. The request will be queued and the owner must approve it via TON Connect.',
   {
@@ -43,6 +143,12 @@ server.tool(
     payloadBoc: z.string().optional().describe('Optional BOC-encoded payload for the transaction'),
   },
   async ({ to, amountNano, payloadBoc }) => {
+    if (!TOKEN) {
+      return {
+        content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
+        isError: true,
+      };
+    }
     try {
       const body: Record<string, string> = { to, amountNano };
       if (payloadBoc) body.payloadBoc = payloadBoc;
@@ -85,6 +191,12 @@ server.tool(
     id: z.string().describe('The request ID returned by request_transfer'),
   },
   async ({ id }) => {
+    if (!TOKEN) {
+      return {
+        content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
+        isError: true,
+      };
+    }
     try {
       const result = await apiCall(`/v1/safe/tx/${id}`);
 
@@ -120,6 +232,12 @@ server.tool(
   'List all pending transfer requests waiting for wallet owner approval.',
   {},
   async () => {
+    if (!TOKEN) {
+      return {
+        content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
+        isError: true,
+      };
+    }
     try {
       const data = await apiCall('/v1/safe/tx/pending');
       const requests = data.requests;
