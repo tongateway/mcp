@@ -3,9 +3,30 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 const API_URL = process.env.AGENT_GATEWAY_API_URL ?? 'https://api.tongateway.ai';
-let TOKEN = process.env.AGENT_GATEWAY_TOKEN || '';
+const TOKEN_FILE = join(homedir(), '.tongateway', 'token');
+
+function loadToken(): string {
+  if (process.env.AGENT_GATEWAY_TOKEN) return process.env.AGENT_GATEWAY_TOKEN;
+  try {
+    return readFileSync(TOKEN_FILE, 'utf-8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function saveToken(token: string): void {
+  try {
+    mkdirSync(join(homedir(), '.tongateway'), { recursive: true });
+    writeFileSync(TOKEN_FILE, token, 'utf-8');
+  } catch {}
+}
+
+let TOKEN = loadToken();
 
 async function apiCall(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
@@ -108,8 +129,9 @@ server.tool(
         };
       }
 
-      // Store the token for future API calls
+      // Store the token for future API calls and persist to disk
       TOKEN = data.token;
+      saveToken(TOKEN);
 
       return {
         content: [
