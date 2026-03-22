@@ -162,10 +162,10 @@ server.tool(
   {
     to: z.string().describe('Destination TON address'),
     amountNano: z.string().describe('Amount in nanoTON (1 TON = 1000000000)'),
-    payloadBoc: z.string().optional().describe('Optional BOC-encoded payload for the transaction'),
+    payload: z.string().optional().describe('Optional BOC-encoded payload for the transaction'),
     stateInit: z.string().optional().describe('Optional stateInit BOC for deploying new contracts'),
   },
-  async ({ to, amountNano, payloadBoc, stateInit }) => {
+  async ({ to, amountNano, payload, stateInit }) => {
     if (!TOKEN) {
       return {
         content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
@@ -174,7 +174,7 @@ server.tool(
     }
     try {
       const body: Record<string, string> = { to, amountNano };
-      if (payloadBoc) body.payloadBoc = payloadBoc;
+      if (payload) body.payload = payload;
       if (stateInit) body.stateInit = stateInit;
 
       const result = await apiCall('/v1/safe/tx/transfer', {
