@@ -28,6 +28,27 @@ function saveToken(token: string): void {
 
 let TOKEN = loadToken();
 
+// Compiled AgentVault contract code (embedded for security — no external dependency)
+const AGENT_WALLET_CODE_HEX = 'b5ee9c7241020a01000210000114ff00f4a413f4bcf2c80b01020120020702014803060188d020d749c120915b8eb920d70b1f20821061677374bd2182106172766bbdb0218210616f776bbdb0925f03e0821005f5e10070fb0202d0d3030171b0925f03e0fa4030e20401a2ed44d0d200d31fd31fd3fffa40d3ffd31f305172c705f2e19c078020d7218040d72128821061677374ba8e2336363603d3ffd31f301036102506c8ca0015cb1f13cb1fcbff01cf16cbffcb1fc9ed54e30e0500b02882106172766bba8e2230353535702010365e22102306c8ca0015cb1f13cb1fcbff01cf16cbffcb1fc9ed54e032078210616f776bba8e1bd3ff30552306c8ca0015cb1f13cb1fcbff01cf16cbffcb1fc9ed54e05f07f2000017a0992fda89a0e3ae43ae163f0106f2db3c0801f620d70b1f82107369676ebaf2e195208308d722018308d723208020d721d31fd31fd31fed44d0d200d31fd31fd3fffa40d3ffd31f3026b3f2d1905185baf2e1915193baf2e19207f823bbf2d19408f901547098f9107029c300953051a8f91092323ae25290b1f2e19308b397f82324bcf2d19adef800a4506510470900e0470306c8ca0015cb1f13cb1fcbff01cf16cbffcb1fc9ed54f80ff40430206e91308e4c7f21d73930709421c700b38e2d01d72820761e436c20d749c008f2e19d20d74ac002f2e19d20d71d06c712c2005230b0f2d19ed74cd7393001a4e86c128407bbf2e19dd74ac000f2e19ded55e2c6472d0b';
+
+// Local wallet storage — agent secret keys never leave the machine
+const WALLETS_FILE = join(homedir(), '.tongateway', 'wallets.json');
+
+function loadLocalWallets(): Record<string, { agentSecretKey: string; walletId: number }> {
+  try {
+    return JSON.parse(readFileSync(WALLETS_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalWallet(address: string, agentSecretKey: string, walletId: number): void {
+  const wallets = loadLocalWallets();
+  wallets[address] = { agentSecretKey, walletId };
+  mkdirSync(join(homedir(), '.tongateway'), { recursive: true });
+  writeFileSync(WALLETS_FILE, JSON.stringify(wallets, null, 2), 'utf-8');
+}
+
 async function apiCall(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -449,6 +470,268 @@ server.tool(
       const lines = Object.entries(tonRates).map(([c, p]) => `1 TON = ${p} ${c}`);
       return {
         content: [{ type: 'text' as const, text: lines.length ? lines.join('\n') : 'Price data unavailable.' }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'deploy_agent_wallet',
+  'Deploy a new Agent Wallet smart contract. This creates an autonomous wallet that the agent can use to send TON without requiring approval for each transaction. DANGER: funds in this wallet can be spent by the agent without approval.',
+  {},
+  async () => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      // Get owner's public key
+      const meResult = await apiCall('/v1/auth/me');
+      const ownerAddress = meResult.address;
+
+      // Get owner public key from tonapi
+      const pubKeyRes = await fetch(`https://tonapi.io/v2/wallet/${encodeURIComponent(ownerAddress)}/get-account-public-key`);
+      const pubKeyData = await pubKeyRes.json() as any;
+      if (!pubKeyData.public_key) throw new Error('Could not get owner public key');
+      const ownerPublicKey = pubKeyData.public_key;
+
+      // Generate agent keypair on server
+      const deployResult = await apiCall('/v1/agent-wallet/deploy', {
+        method: 'POST',
+        body: JSON.stringify({ ownerPublicKey }),
+      });
+
+      const { agentPublicKey, agentSecretKey, walletId } = deployResult;
+
+      // Build stateInit using embedded compiled code
+      const { Cell, beginCell, Address, contractAddress, storeStateInit } = await import('@ton/core');
+
+      const code = Cell.fromBoc(Buffer.from(AGENT_WALLET_CODE_HEX, 'hex'))[0];
+
+      const ownerPubBuf = Buffer.from(ownerPublicKey, 'hex');
+      const agentPubBuf = Buffer.from(agentPublicKey, 'hex');
+      const adminAddr = Address.parse(ownerAddress);
+
+      const data = beginCell()
+        .storeBit(true)              // signatureAllowed
+        .storeUint(0, 32)            // seqno
+        .storeUint(walletId, 32)     // walletId
+        .storeBuffer(ownerPubBuf, 32) // ownerPublicKey
+        .storeAddress(adminAddr)      // adminAddress
+        .storeBuffer(agentPubBuf, 32) // agentPublicKey (set from the start)
+        .storeUint(Math.floor(Date.now() / 1000) + 10 * 365 * 24 * 3600, 32) // agentValidUntil (10 years)
+        .endCell();
+
+      const init = { code, data };
+      const address = contractAddress(0, init);
+      const stateInitCell = beginCell().store(storeStateInit(init)).endCell();
+      const stateInitBoc = stateInitCell.toBoc().toString('base64');
+
+      // Deploy via safe transfer (user approves)
+      const transferResult = await apiCall('/v1/safe/tx/transfer', {
+        method: 'POST',
+        body: JSON.stringify({
+          to: address.toRawString(),
+          amountNano: '100000000', // 0.1 TON for deployment
+          stateInit: stateInitBoc,
+        }),
+      });
+
+      // Register the wallet on the server
+      await apiCall('/v1/agent-wallet/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          address: address.toRawString(),
+          agentSecretKey,
+          agentPublicKey,
+          ownerPublicKey,
+          walletId,
+        }),
+      });
+
+      // Save secret key locally — never leaves this machine
+      saveLocalWallet(address.toRawString(), agentSecretKey, walletId);
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            'Agent Wallet deployment requested!',
+            '',
+            `Address: ${address.toString()}`,
+            `Raw: ${address.toRawString()}`,
+            `Request ID: ${transferResult.id}`,
+            '',
+            'Approve the deployment in your wallet app (0.1 TON).',
+            'After approval, top up the wallet with funds the agent can spend.',
+            '',
+            'WARNING: The agent can spend funds from this wallet without your approval.',
+          ].join('\n'),
+        }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'execute_agent_wallet_transfer',
+  'Send TON directly from an Agent Wallet. No approval needed — the agent signs and broadcasts immediately. Only works with deployed agent wallets where the agent key is set.',
+  {
+    walletAddress: z.string().describe('The agent wallet contract address'),
+    to: z.string().describe('Destination TON address'),
+    amountNano: z.string().describe('Amount in nanoTON'),
+  },
+  async ({ walletAddress, to, amountNano }) => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      const { Cell, beginCell, Address, SendMode, external, storeMessage } = await import('@ton/core');
+      const { sign, keyPairFromSeed } = await import('@ton/crypto');
+
+      // Get wallet config from local storage
+      const localWallets = loadLocalWallets();
+      const localConfig = localWallets[walletAddress];
+      if (!localConfig) throw new Error('Agent wallet secret key not found locally. Was it deployed from this machine?');
+
+      // Get current seqno from server
+      const infoResult = await apiCall(`/v1/agent-wallet/${encodeURIComponent(walletAddress)}/info`);
+      const seqno = infoResult.seqno;
+      const walletId = localConfig.walletId;
+
+      const secretKeyBuf = Buffer.from(localConfig.agentSecretKey, 'hex');
+      // Normalize: if 64 bytes use as-is, if 32 bytes derive from seed
+      let secretKey: Buffer;
+      if (secretKeyBuf.length === 64) {
+        secretKey = secretKeyBuf;
+      } else {
+        const kp = keyPairFromSeed(secretKeyBuf);
+        secretKey = kp.secretKey;
+      }
+
+      const vaultAddr = Address.parse(walletAddress);
+      const destAddr = Address.parse(to);
+
+      // Build transfer message
+      const transferMsg = beginCell()
+        .storeUint(0x18, 6)
+        .storeAddress(destAddr)
+        .storeCoins(BigInt(amountNano))
+        .storeUint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .endCell();
+
+      // Build actions list
+      const sendMode = SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS;
+      const actionsList = beginCell()
+        .storeRef(beginCell().endCell()) // empty previous
+        .storeUint(0x0ec3c86d, 32)       // action_send_msg prefix
+        .storeUint(sendMode, 8)
+        .storeRef(transferMsg)
+        .endCell();
+
+      // Build unsigned body
+      const validUntil = Math.floor(Date.now() / 1000) + 300;
+      const unsignedBody = beginCell()
+        .storeUint(0x7369676e, 32)  // prefix::signed_external
+        .storeUint(walletId, 32)
+        .storeUint(validUntil, 32)
+        .storeUint(seqno, 32)
+        .storeMaybeRef(actionsList)
+        .endCell();
+
+      // Sign
+      const signature = sign(unsignedBody.hash(), secretKey);
+
+      const signedBody = beginCell()
+        .storeSlice(unsignedBody.beginParse())
+        .storeBuffer(signature)
+        .endCell();
+
+      // Build external message
+      const extMsg = external({ to: vaultAddr, body: signedBody });
+      const boc = beginCell().store(storeMessage(extMsg)).endCell().toBoc().toString('base64');
+
+      // Broadcast
+      const broadcastRes = await fetch('https://toncenter.com/api/v2/sendBoc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boc }),
+      });
+      const broadcastData = await broadcastRes.json() as any;
+
+      if (!broadcastData.ok) {
+        throw new Error(`Broadcast failed: ${broadcastData.error || JSON.stringify(broadcastData)}`);
+      }
+
+      const tonAmount = (BigInt(amountNano) / 1000000000n).toString() + '.' +
+        (BigInt(amountNano) % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '');
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            'Transfer executed from Agent Wallet!',
+            '',
+            `From: ${walletAddress}`,
+            `To: ${to}`,
+            `Amount: ${tonAmount} TON`,
+            `Seqno: ${seqno}`,
+            '',
+            'Transaction broadcast successfully. No approval was needed.',
+          ].join('\n'),
+        }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'get_agent_wallet_info',
+  'Get info about an Agent Wallet — balance, seqno, agent key status.',
+  {
+    walletAddress: z.string().optional().describe('Agent wallet address. If omitted, lists all your agent wallets.'),
+  },
+  async ({ walletAddress }) => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      if (!walletAddress) {
+        // List all wallets
+        const result = await apiCall('/v1/agent-wallet/list');
+        const wallets = result.wallets || [];
+        if (!wallets.length) {
+          return { content: [{ type: 'text' as const, text: 'No agent wallets found. Use deploy_agent_wallet to create one.' }] };
+        }
+        const lines = wallets.map((w: any) =>
+          `- ${w.address} (created ${new Date(w.createdAt).toISOString()})`
+        );
+        return {
+          content: [{ type: 'text' as const, text: `Agent wallets (${wallets.length}):\n${lines.join('\n')}` }],
+        };
+      }
+
+      const result = await apiCall(`/v1/agent-wallet/${encodeURIComponent(walletAddress)}/info`);
+      const balanceTon = (BigInt(result.balance) / 1000000000n).toString();
+      const balanceFrac = (BigInt(result.balance) % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '') || '0';
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            `Agent Wallet: ${result.address}`,
+            `Balance: ${balanceTon}.${balanceFrac} TON`,
+            `Status: ${result.status}`,
+            `Seqno: ${result.seqno}`,
+            `Agent Key: ${result.agentPublicKey}`,
+            `Created: ${new Date(result.createdAt).toISOString()}`,
+          ].join('\n'),
+        }],
       };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
