@@ -532,12 +532,12 @@ server.tool(
     try {
       const result = await fetch(`${API_URL}/v1/dex/pairs`);
       const data = await result.json() as any;
-      if (!data.pools?.length) {
-        return { content: [{ type: 'text' as const, text: 'No DEX pools configured yet.' }] };
+      const tokens = data.tokens || [];
+      if (!tokens.length) {
+        return { content: [{ type: 'text' as const, text: 'No DEX pairs available.' }] };
       }
-      const lines = data.pools.map((p: any) => `- ${p.pair} (${p.direction})`);
       return {
-        content: [{ type: 'text' as const, text: `Available pools:\n${lines.join('\n')}` }],
+        content: [{ type: 'text' as const, text: `Available tokens: ${tokens.join(', ')}\n\nAny pair combination is supported (e.g. NOT/TON, USDT/TON, DOGS/NOT).` }],
       };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
