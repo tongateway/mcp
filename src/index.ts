@@ -79,7 +79,7 @@ const server = new McpServer({
 
 server.tool(
   'request_auth',
-  'Request wallet authentication. Generates a one-time link for the user to connect their TON wallet. After the user connects, use get_auth_token to retrieve the token. Use this when no token is configured.',
+  'Authenticate with TON blockchain. Call this FIRST if you get "No token configured" errors. Generates a one-time link — ask the user to open it and connect their wallet. Then call get_auth_token to complete. Token persists across restarts.',
   {
     label: z.string().optional().describe('Label for this agent session (e.g. "claude-agent")'),
   },
@@ -122,7 +122,7 @@ server.tool(
 
 server.tool(
   'get_auth_token',
-  'Check if the user has completed wallet authentication and retrieve the token. Call this after request_auth once the user has opened the link and connected their wallet.',
+  'Complete authentication after the user opened the link from request_auth. Pass the authId you received. Once successful, all other tools become available. You only need to authenticate once — the token is saved automatically.',
   {
     authId: z.string().describe('The authId returned by request_auth'),
   },
@@ -179,7 +179,7 @@ server.tool(
 
 server.tool(
   'request_transfer',
-  'Request a TON transfer from the wallet owner. The request will be queued and the owner must approve it via TON Connect.',
+  'Request a TON transfer. The user must approve it in their wallet app. Amount is in nanoTON (1 TON = 1000000000). Supports optional payload (BOC) and stateInit (for contract deployment). The transfer is queued — use get_request_status to check if approved.',
   {
     to: z.string().describe('Destination TON address'),
     amountNano: z.string().describe('Amount in nanoTON (1 TON = 1000000000)'),
@@ -231,7 +231,7 @@ server.tool(
 
 server.tool(
   'get_request_status',
-  'Check the status of a previously submitted transfer request.',
+  'Check the status of a transfer request. Statuses: pending (waiting for approval), confirmed (signed and broadcast), rejected (user declined), expired (5 min timeout). Also shows broadcast result if available.',
   {
     id: z.string().describe('The request ID returned by request_transfer'),
   },
@@ -276,7 +276,7 @@ server.tool(
 
 server.tool(
   'list_pending_requests',
-  'List all pending transfer requests waiting for wallet owner approval.',
+  'List all transfer requests waiting for wallet owner approval. Use to check if there are unfinished transfers.',
   {},
   async () => {
     if (!TOKEN) {
@@ -319,7 +319,7 @@ server.tool(
 
 server.tool(
   'get_wallet_info',
-  'Get the connected wallet address, TON balance, and account status.',
+  'Get the connected wallet address, TON balance (in nanoTON and TON), and account status. Use this to check how much TON the user has before sending transfers.',
   {},
   async () => {
     if (!TOKEN) {
@@ -347,7 +347,7 @@ server.tool(
 
 server.tool(
   'get_jetton_balances',
-  'Get all jetton (token) balances in the connected wallet. Shows USDT, NOT, DOGS, and other tokens.',
+  'List all tokens (jettons) in the wallet — USDT, NOT, DOGS, and others. Shows symbol, name, balance, and decimals for each. Use this when the user asks about their tokens or wants to know what they hold.',
   {},
   async () => {
     if (!TOKEN) {
@@ -377,7 +377,7 @@ server.tool(
 
 server.tool(
   'get_transactions',
-  'Get recent transaction history for the connected wallet.',
+  'Get recent transaction history. Shows timestamps, action types, and whether transactions were flagged as scam. Use when the user asks "what happened" or wants to review recent activity.',
   {
     limit: z.number().optional().describe('Number of transactions to return (default 10)'),
   },
@@ -407,7 +407,7 @@ server.tool(
 
 server.tool(
   'get_nft_items',
-  'List NFTs owned by the connected wallet.',
+  'List all NFTs owned by the wallet — name, collection, and address for each. Use when the user asks about their NFTs or collectibles.',
   {},
   async () => {
     if (!TOKEN) {
@@ -433,7 +433,7 @@ server.tool(
 
 server.tool(
   'resolve_name',
-  'Resolve a .ton domain name to a wallet address. Use this when the user says "send to alice.ton" instead of a raw address.',
+  'Resolve a .ton domain name (like "alice.ton") to a raw wallet address. ALWAYS use this before request_transfer when the user gives a .ton name instead of a raw address.',
   {
     domain: z.string().describe('The .ton domain name to resolve (e.g. "alice.ton")'),
   },
@@ -456,7 +456,7 @@ server.tool(
 
 server.tool(
   'get_ton_price',
-  'Get the current price of TON in USD and other currencies.',
+  'Get the current TON price in USD, EUR, or other currencies. Use when the user asks "how much is my TON worth" or before transfers to show USD equivalents.',
   {
     currencies: z.string().optional().describe('Comma-separated currencies (default "USD")'),
   },
@@ -479,7 +479,7 @@ server.tool(
 
 server.tool(
   'deploy_agent_wallet',
-  'Deploy a new Agent Wallet smart contract. This creates an autonomous wallet that the agent can use to send TON without requiring approval for each transaction. DANGER: funds in this wallet can be spent by the agent without approval.',
+  'Deploy an Agent Wallet smart contract — a dedicated sub-wallet for autonomous operations. WARNING: The agent can spend funds from this wallet WITHOUT user approval. Only deploy if the user explicitly wants autonomous transfers. After deployment, top up the wallet with funds.',
   {},
   async () => {
     if (!TOKEN) {
@@ -578,7 +578,7 @@ server.tool(
 
 server.tool(
   'execute_agent_wallet_transfer',
-  'Send TON directly from an Agent Wallet. No approval needed — the agent signs and broadcasts immediately. Only works with deployed agent wallets where the agent key is set.',
+  'Send TON directly from an Agent Wallet — NO approval needed. The agent signs and broadcasts immediately. Only works with deployed agent wallets. Use for automated/autonomous transfers where speed matters and the user has opted in.',
   {
     walletAddress: z.string().describe('The agent wallet contract address'),
     to: z.string().describe('Destination TON address'),
@@ -692,7 +692,7 @@ server.tool(
 
 server.tool(
   'get_agent_wallet_info',
-  'Get info about an Agent Wallet — balance, seqno, agent key status.',
+  'Get info about Agent Wallets — balance, seqno, agent key status. Pass a wallet address for details, or omit to list all agent wallets.',
   {
     walletAddress: z.string().optional().describe('Agent wallet address. If omitted, lists all your agent wallets.'),
   },
