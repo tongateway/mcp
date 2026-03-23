@@ -530,7 +530,7 @@ server.tool(
   {},
   async () => {
     try {
-      const result = await fetch(`${API_URL}/v1/dex/pools`);
+      const result = await fetch(`${API_URL}/v1/dex/pairs`);
       const data = await result.json() as any;
       if (!data.pools?.length) {
         return { content: [{ type: 'text' as const, text: 'No DEX pools configured yet.' }] };
