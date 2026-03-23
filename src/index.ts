@@ -478,8 +478,8 @@ server.tool(
 );
 
 server.tool(
-  'create_swap_order',
-  'Swap tokens on the open4dev DEX. Provide the token pair (e.g. NOT→TON), amount, and price. The order is created as a safe transfer — the user approves it in their wallet. Use get_ton_price or get_jetton_balances to determine current rates before swapping.',
+  'create_dex_order',
+  'Place a limit order on the open4dev DEX order book. Provide the token pair (e.g. NOT→TON), amount, and price. The order is created as a safe transfer — the user approves it in their wallet. Use get_ton_price or get_jetton_balances to determine current rates before swapping.',
   {
     fromToken: z.string().describe('Token to sell, e.g. "NOT", "TON", "USDT"'),
     toToken: z.string().describe('Token to buy, e.g. "TON", "NOT"'),
@@ -491,7 +491,7 @@ server.tool(
       return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
     }
     try {
-      const result = await apiCall('/v1/dex/swap', {
+      const result = await apiCall('/v1/dex/order', {
         method: 'POST',
         body: JSON.stringify({ fromToken, toToken, amount, priceRateNano }),
       });
@@ -500,7 +500,7 @@ server.tool(
         content: [{
           type: 'text' as const,
           text: [
-            `Swap order created!`,
+            `Order placed on open4dev DEX!`,
             ``,
             `${fromToken} → ${toToken}`,
             `Amount: ${amount}`,
@@ -508,7 +508,7 @@ server.tool(
             `Pool: ${result.swap?.pool || 'unknown'}`,
             `Request ID: ${result.id}`,
             ``,
-            `Approve the swap in your wallet app.`,
+            `Approve the order in your wallet app.`,
           ].join('\n'),
         }],
       };
@@ -519,7 +519,7 @@ server.tool(
 );
 
 server.tool(
-  'list_dex_pools',
+  'list_dex_pairs',
   'List available trading pairs on the DEX. Shows which token swaps are configured and available.',
   {},
   async () => {
