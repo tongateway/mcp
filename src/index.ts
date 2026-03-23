@@ -128,11 +128,17 @@ server.tool(
   },
   async ({ authId }) => {
     try {
-      const result = await fetch(`${API_URL}/v1/auth/check/${authId}`, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await result.json() as any;
-      if (!result.ok) throw new Error(data.error ?? 'Failed');
+      // Retry up to 3 times with 2s delay (KV eventual consistency)
+      let data: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const result = await fetch(`${API_URL}/v1/auth/check/${authId}`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        data = await result.json() as any;
+        if (!result.ok) throw new Error(data.error ?? 'Failed');
+        if (data.status === 'completed') break;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
+      }
 
       if (data.status === 'pending') {
         return {
@@ -143,7 +149,7 @@ server.tool(
                 `Authentication still pending.`,
                 `The user has not connected their wallet yet.`,
                 ``,
-                `Wait a moment and try again.`,
+                `Wait a moment and call get_auth_token again.`,
               ].join('\n'),
             },
           ],
