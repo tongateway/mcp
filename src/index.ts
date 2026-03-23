@@ -478,6 +478,68 @@ server.tool(
 );
 
 server.tool(
+  'create_swap_order',
+  'Swap tokens on the open4dev DEX. Provide the token pair (e.g. NOT→TON), amount, and price. The order is created as a safe transfer — the user approves it in their wallet. Use get_ton_price or get_jetton_balances to determine current rates before swapping.',
+  {
+    fromToken: z.string().describe('Token to sell, e.g. "NOT", "TON", "USDT"'),
+    toToken: z.string().describe('Token to buy, e.g. "TON", "NOT"'),
+    amount: z.string().describe('Amount to sell in smallest unit (nanoTON for TON, or raw jetton amount based on decimals)'),
+    priceRateNano: z.string().describe('Price rate in nanoTON per unit'),
+  },
+  async ({ fromToken, toToken, amount, priceRateNano }) => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+    }
+    try {
+      const result = await apiCall('/v1/dex/swap', {
+        method: 'POST',
+        body: JSON.stringify({ fromToken, toToken, amount, priceRateNano }),
+      });
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            `Swap order created!`,
+            ``,
+            `${fromToken} → ${toToken}`,
+            `Amount: ${amount}`,
+            `Price Rate: ${priceRateNano} nanoTON`,
+            `Pool: ${result.swap?.pool || 'unknown'}`,
+            `Request ID: ${result.id}`,
+            ``,
+            `Approve the swap in your wallet app.`,
+          ].join('\n'),
+        }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
+  'list_dex_pools',
+  'List available trading pairs on the DEX. Shows which token swaps are configured and available.',
+  {},
+  async () => {
+    try {
+      const result = await fetch(`${API_URL}/v1/dex/pools`);
+      const data = await result.json() as any;
+      if (!data.pools?.length) {
+        return { content: [{ type: 'text' as const, text: 'No DEX pools configured yet.' }] };
+      }
+      const lines = data.pools.map((p: any) => `- ${p.pair} (${p.direction})`);
+      return {
+        content: [{ type: 'text' as const, text: `Available pools:\n${lines.join('\n')}` }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
   'deploy_agent_wallet',
   'Deploy an Agent Wallet smart contract — a dedicated sub-wallet for autonomous operations. WARNING: The agent can spend funds from this wallet WITHOUT user approval. Only deploy if the user explicitly wants autonomous transfers. After deployment, top up the wallet with funds.',
   {},
