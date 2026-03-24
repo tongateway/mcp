@@ -179,7 +179,22 @@ function createMcpServer() {
         role: 'user',
         content: {
           type: 'text',
-          text: 'Install: npx -y @tongateway/mcp\n\nClaude Code: claude mcp add-json tongateway \'{"command":"npx","args":["-y","@tongateway/mcp"],"env":{"AGENT_GATEWAY_API_URL":"https://api.tongateway.ai"}}\' --scope user\n\nThen say: "Send 1 TON to alice.ton"',
+          text: `# Quick Start
+
+## Install
+\`\`\`bash
+claude mcp add-json tongateway '{"command":"npx","args":["-y","@tongateway/mcp"],"env":{"AGENT_GATEWAY_API_URL":"https://api.tongateway.ai"}}' --scope user
+\`\`\`
+
+## First use
+The agent authenticates automatically — it generates a link, you open it and connect your wallet once. Token persists across restarts.
+
+## Try these commands:
+- "What's my TON balance?"
+- "Show my tokens"
+- "Send 1 TON to alice.ton"
+- "What's the current TON price?"
+- "Show my NFTs"`,
         },
       }],
     }),
@@ -187,13 +202,135 @@ function createMcpServer() {
 
   server.prompt(
     'token-reference',
-    'Amount conversion reference for TON blockchain',
+    'Amount conversion and token decimals reference',
     async () => ({
       messages: [{
         role: 'user',
         content: {
           type: 'text',
-          text: 'TON amounts are in nanoTON (1 TON = 10^9 nanoTON):\n0.1 TON = 100000000\n0.5 TON = 500000000\n1 TON = 1000000000\n10 TON = 10000000000\n\nUSDT/XAUT0 use 6 decimals. All other jettons use 9 decimals.',
+          text: `# Token Reference
+
+## Amount conversion (nanoTON)
+| TON   | nanoTON        |
+|-------|----------------|
+| 0.1   | 100000000      |
+| 0.5   | 500000000      |
+| 1     | 1000000000     |
+| 10    | 10000000000    |
+
+## Token decimals
+- 9 decimals: TON, NOT, DOGS, BUILD, AGNT, PX, CBBTC
+- 6 decimals: USDT, XAUT0
+
+## DEX price format
+Price is human-readable: price=20 means "1 fromToken = 20 toToken"
+Example: USDT→AGNT at price=20 means "1 USDT = 20 AGNT"`,
+        },
+      }],
+    }),
+  );
+
+  server.prompt(
+    'example-transfer',
+    'Example: Send TON to a .ton domain with price check',
+    async () => ({
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `# Example: Send TON to alice.ton
+
+## Step 1: Check balance
+wallet.info()
+→ Address: 0:9d43...0c02, Balance: 823.18 TON, Status: active
+
+## Step 2: Check price
+lookup.price({ currencies: "USD" })
+→ 1 TON = $2.45 USD
+
+## Step 3: Resolve .ton domain
+lookup.resolve_name({ domain: "alice.ton" })
+→ alice.ton → 0:83df...31a8
+
+## Step 4: Send transfer
+transfer.request({ to: "0:83df...31a8", amountNano: "500000000" })
+→ Transfer request created (ID: abc-123). Approve in your wallet app.
+
+## Step 5: Check status
+transfer.status({ id: "abc-123" })
+→ Status: confirmed, Broadcast: success`,
+        },
+      }],
+    }),
+  );
+
+  server.prompt(
+    'example-dex-order',
+    'Example: Place a DEX order to swap tokens',
+    async () => ({
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `# Example: Swap 10,000 NOT for TON
+
+## Step 1: Check available tokens
+dex.pairs()
+→ Available tokens: TON, NOT, USDT, DOGS, BUILD, AGNT, CBBTC, PX, XAUT0
+
+## Step 2: Check your NOT balance
+wallet.jettons()
+→ NOT: 3,186,370.60, USDT: 107.79, BUILD: 45,277.57
+
+## Step 3: Get current price
+lookup.price({ currencies: "USD" })
+→ 1 TON = $2.45 USD
+(NOT ≈ 0.000289 TON per NOT)
+
+## Step 4: Place order
+dex.create_order({
+  fromToken: "NOT",
+  toToken: "TON",
+  amount: "10000000000000",  // 10,000 NOT (9 decimals)
+  price: 0.000289            // TON per NOT
+})
+→ Order placed! Approve in your wallet app.`,
+        },
+      }],
+    }),
+  );
+
+  server.prompt(
+    'example-agent-wallet',
+    'Example: Deploy and use an autonomous Agent Wallet',
+    async () => ({
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `# Example: Autonomous Agent Wallet
+
+⚠️ WARNING: Agent Wallet allows spending WITHOUT approval!
+
+## Step 1: Deploy
+agent_wallet.deploy()
+→ Agent Wallet deployed at EQCT1... Approve 0.1 TON deploy fee in wallet.
+
+## Step 2: Top up
+transfer.request({ to: "EQCT1...", amountNano: "1000000000" })
+→ Transfer 1 TON to agent wallet. Approve in wallet.
+
+## Step 3: Send from agent wallet (NO approval needed!)
+agent_wallet.transfer({
+  walletAddress: "0:93d4...",
+  to: "0:abc...",
+  amountNano: "500000000"
+})
+→ Transfer executed. No approval needed.
+
+## Check balance
+agent_wallet.info({ walletAddress: "0:93d4..." })
+→ Balance: 0.5 TON, Seqno: 1, Status: active`,
         },
       }],
     }),
