@@ -498,12 +498,12 @@ server.tool(
 
 server.tool(
   'dex.create_order',
-  'Place a limit order on the open4dev DEX order book. Provide the token pair, amount in smallest units, and price in human-readable format (e.g. price=20 means "1 fromToken = 20 toToken"). The API handles all decimal conversions and slippage automatically. The order requires wallet approval.',
+  'Place a limit order on the open4dev DEX order book. Both amount and price are human-readable — the API converts to raw units automatically. The order requires wallet approval. Slippage (4% including fees) is applied automatically.',
   {
     fromToken: z.string().describe('Token to sell, e.g. "NOT", "TON", "USDT"'),
     toToken: z.string().describe('Token to buy, e.g. "TON", "NOT", "AGNT"'),
-    amount: z.string().describe('Amount to sell in smallest unit. TON/NOT/DOGS/BUILD/AGNT use 9 decimals (1 TON = 10^9). USDT/XAUT0 use 6 decimals (1 USDT = 10^6).'),
-    price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT". price=0.05 means "1 AGNT = 0.05 USDT".'),
+    amount: z.string().describe('Human-readable amount to sell, e.g. "10000" for 10,000 NOT or "5" for 5 USDT'),
+    price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT". price=0.000289 means "1 NOT = 0.000289 TON".'),
   },
   { title: 'Create DEX Order', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   async ({ fromToken, toToken, amount, price }) => {
