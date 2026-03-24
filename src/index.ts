@@ -2,7 +2,9 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
+import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -807,5 +809,42 @@ server.tool(
   },
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+const httpPort = process.env.MCP_HTTP_PORT || (process.argv.includes('--http') ? '3100' : '');
+
+if (httpPort) {
+  // HTTP transport for Smithery and remote clients
+  const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    // CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+    // Health check
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, version: '0.12.0' }));
+      return;
+    }
+
+    // MCP endpoint
+    if (req.url === '/mcp' || req.url === '/') {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined as any });
+      res.on('close', () => { transport.close(); });
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+      return;
+    }
+
+    res.writeHead(404);
+    res.end('Not found');
+  });
+
+  httpServer.listen(Number(httpPort), () => {
+    console.error(`MCP HTTP server listening on port ${httpPort}`);
+  });
+} else {
+  // Default: stdio transport for local MCP clients
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
