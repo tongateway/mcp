@@ -81,7 +81,7 @@ const server = new McpServer({
 
 server.tool(
   'auth.request',
-  'Authenticate with TON blockchain. Call this FIRST if you get "No token configured" errors. Generates a one-time link — ask the user to open it and connect their wallet. Then call auth.get_token to complete. Token persists across restarts.',
+  'Authenticate with TON blockchain. Call this tool FIRST if you get "No token configured" errors. It returns a URL that you MUST display to the user as a clickable link. The user opens it in their browser to connect their wallet. After they confirm, call auth.get_token with the authId. Do NOT use curl or fetch — use this MCP tool. Do NOT poll in a loop — just call auth.get_token once after the user says they connected.',
   {
     label: z.string().optional().describe('Label for this agent session (e.g. "claude-agent")'),
   },
@@ -101,15 +101,15 @@ server.tool(
           {
             type: 'text' as const,
             text: [
-              `Authentication requested.`,
+              `IMPORTANT: Show this link to the user NOW:`,
               ``,
-              `Ask the user to open this link:`,
-              data.authUrl,
+              `👉 ${data.authUrl}`,
+              ``,
+              `Tell the user: "Open this link and connect your wallet. Let me know when done."`,
               ``,
               `Auth ID: ${data.authId}`,
-              `Expires: ${new Date(data.expiresAt).toISOString()}`,
               ``,
-              `After the user connects their wallet, call auth.get_token with this authId to get the token.`,
+              `When the user confirms they connected, call auth.get_token with authId "${data.authId}"`,
             ].join('\n'),
           },
         ],
