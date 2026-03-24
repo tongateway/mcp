@@ -1,8 +1,10 @@
 # @tongateway/mcp
 
+[![smithery badge](https://smithery.ai/badge/tongateway/agent)](https://smithery.ai/servers/tongateway/agent)
+
 MCP server for [Agent Gateway](https://tongateway.ai) — gives AI agents full access to the TON blockchain via Model Context Protocol.
 
-**14 tools:** wallet info, jettons, NFTs, transactions, transfers, .ton DNS, prices, agent wallets, and more.
+**16 tools:** wallet info, jettons, NFTs, transactions, transfers, .ton DNS, prices, DEX orders, agent wallets, and more.
 
 ## Quick Start
 
