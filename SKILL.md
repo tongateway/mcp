@@ -104,7 +104,7 @@ transfer.request({ to: "0:83df...31a8", amountNano: "500000000" })
 ### Place a DEX order
 
 ```
-dex.create_order({ fromToken: "NOT", toToken: "TON", amount: "10000000000000", price: 0.000289 })
+dex.create_order({ fromToken: "NOT", toToken: "TON", amount: "10000", price: 0.000289 })
 → Order placed on open4dev DEX. Approve in your wallet app.
 ```
 

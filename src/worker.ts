@@ -120,11 +120,11 @@ function createMcpServer() {
 
   server.tool(
     'dex.create_order',
-    'Place a limit order on the open4dev DEX order book. Provide token pair, amount in smallest units, and human-readable price. The API handles decimal conversion, slippage (4% including fees), and gas automatically.',
+    'Place a limit order on the open4dev DEX order book. Both amount and price are human-readable. The API converts to raw units, handles slippage (4% including fees), and gas automatically.',
     {
       fromToken: z.string().describe('Token to sell: TON, NOT, USDT, DOGS, BUILD, AGNT, CBBTC, PX, XAUT0'),
       toToken: z.string().describe('Token to buy: TON, NOT, USDT, DOGS, BUILD, AGNT, CBBTC, PX, XAUT0'),
-      amount: z.string().describe('Amount to sell in smallest unit. TON/NOT/DOGS/BUILD/AGNT use 9 decimals. USDT/XAUT0 use 6 decimals.'),
+      amount: z.string().describe('Human-readable amount to sell, e.g. "10000" for 10,000 NOT or "5" for 5 USDT'),
       price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT".'),
     },
     { title: 'Create DEX Order', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -291,7 +291,7 @@ lookup.price({ currencies: "USD" })
 dex.create_order({
   fromToken: "NOT",
   toToken: "TON",
-  amount: "10000000000000",  // 10,000 NOT (9 decimals)
+  amount: "10000",  // human-readable, API converts to raw
   price: 0.000289            // TON per NOT
 })
 → Order placed! Approve in your wallet app.`,
