@@ -121,6 +121,8 @@ Agent: execute_agent_wallet_transfer(wallet, to, amount)
 - [API Docs](https://api.tongateway.ai/docs) — Swagger UI
 - [Agent Wallet Contract](https://github.com/tongateway/ton-agent-gateway-contract) — FunC smart contract
 - [Skill File](https://tongateway.ai/agent-gateway.md) — context file for AI agents
+- [Smithery](https://smithery.ai/servers/tongateway/agent) — MCP marketplace listing
+- [MCP HTTP Endpoint](https://tongateway.run.tools) — remote MCP transport
 
 ## License
 
