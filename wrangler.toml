@@ -1,0 +1,9 @@
+name = "tongateway-mcp"
+main = "src/worker.ts"
+compatibility_date = "2026-03-12"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[[routes]]
+pattern = "mcp.tongateway.ai"
+custom_domain = true
