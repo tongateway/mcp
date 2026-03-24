@@ -485,21 +485,21 @@ server.tool(
 
 server.tool(
   'create_dex_order',
-  'Place a limit order on the open4dev DEX order book. Provide the token pair (e.g. NOT→TON), amount, and price. The order is created as a safe transfer — the user approves it in their wallet. Use get_ton_price or get_jetton_balances to determine current rates before swapping.',
+  'Place a limit order on the open4dev DEX order book. Provide the token pair, amount in smallest units, and price in human-readable format (e.g. price=20 means "1 fromToken = 20 toToken"). The API handles all decimal conversions and slippage automatically. The order requires wallet approval.',
   {
     fromToken: z.string().describe('Token to sell, e.g. "NOT", "TON", "USDT"'),
-    toToken: z.string().describe('Token to buy, e.g. "TON", "NOT"'),
-    amount: z.string().describe('Amount to sell in smallest unit (nanoTON for TON, or raw jetton amount based on decimals)'),
-    priceRateNano: z.string().describe('Price rate in nanoTON per unit'),
+    toToken: z.string().describe('Token to buy, e.g. "TON", "NOT", "AGNT"'),
+    amount: z.string().describe('Amount to sell in smallest unit. TON/NOT/DOGS/BUILD/AGNT use 9 decimals (1 TON = 10^9). USDT/XAUT0 use 6 decimals (1 USDT = 10^6).'),
+    price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT". price=0.05 means "1 AGNT = 0.05 USDT".'),
   },
-  async ({ fromToken, toToken, amount, priceRateNano }) => {
+  async ({ fromToken, toToken, amount, price }) => {
     if (!TOKEN) {
       return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
     }
     try {
       const result = await apiCall('/v1/dex/order', {
         method: 'POST',
-        body: JSON.stringify({ fromToken, toToken, amount, priceRateNano }),
+        body: JSON.stringify({ fromToken, toToken, amount, price }),
       });
 
       return {
@@ -510,8 +510,8 @@ server.tool(
             ``,
             `${fromToken} → ${toToken}`,
             `Amount: ${amount}`,
-            `Price Rate: ${priceRateNano} nanoTON`,
-            `Pool: ${result.swap?.pool || 'unknown'}`,
+            `Price: ${price} ${toToken} per ${fromToken}`,
+            `Slippage: ${result.swap?.slippage ?? 4}% (includes fees)`,
             `Request ID: ${result.id}`,
             ``,
             `Approve the order in your wallet app.`,
