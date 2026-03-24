@@ -67,8 +67,9 @@ export default {
     if (url.pathname === '/mcp') {
       try {
         const server = createMcpServer();
+        // Stateless mode — no session tracking (Workers are stateless)
         const transport = new WebStandardStreamableHTTPServerTransport({
-          sessionIdGenerator: () => crypto.randomUUID(),
+          sessionIdGenerator: undefined as any,
         });
         await server.connect(transport);
         const response = await transport.handleRequest(request);
