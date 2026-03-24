@@ -7,7 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
 
-const VERSION = '0.13.0';
+const VERSION = '0.14.0';
 
 function createMcpServer() {
   const server = new McpServer({
@@ -18,97 +18,108 @@ function createMcpServer() {
   // --- Auth ---
 
   server.tool(
-    'request_auth',
-    'Authenticate with TON blockchain. Generates a one-time link for the user to connect their wallet. After the user opens the link, call get_auth_token to complete authentication.',
+    'auth.request',
+    'Authenticate with TON blockchain. Generates a one-time link for the user to connect their wallet. After the user opens the link, call auth.get_token to complete authentication.',
     { label: z.string().optional().describe('Label for this agent session, e.g. "claude-agent"') },
+    { title: 'Request Authentication', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport (npx @tongateway/mcp) for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_auth_token',
-    'Complete authentication after the user opened the link from request_auth. Returns the token which enables all other tools.',
-    { authId: z.string().describe('The authId returned by request_auth') },
+    'auth.get_token',
+    'Complete authentication after the user opened the link from auth.request. Returns the token which enables all other tools.',
+    { authId: z.string().describe('The authId returned by auth.request') },
+    { title: 'Get Auth Token', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   // --- Wallet ---
 
   server.tool(
-    'get_wallet_info',
+    'wallet.info',
     'Get the connected wallet address, TON balance in nanoTON and human-readable format, and account status (active/uninitialized).',
     {},
+    { title: 'Wallet Info', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_jetton_balances',
+    'wallet.jettons',
     'List all jetton (token) balances in the wallet — USDT, NOT, DOGS, BUILD, and others. Returns symbol, name, balance, and decimals for each token.',
     {},
+    { title: 'Jetton Balances', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_transactions',
+    'wallet.transactions',
     'Get recent transaction history for the connected wallet. Shows timestamps, action types, and scam flags.',
     { limit: z.number().optional().describe('Number of transactions to return (default 10, max 100)') },
+    { title: 'Transaction History', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_nft_items',
+    'wallet.nfts',
     'List all NFTs owned by the connected wallet — name, collection name, and contract address for each.',
     {},
+    { title: 'NFT Items', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   // --- Transfers ---
 
   server.tool(
-    'request_transfer',
-    'Request a TON transfer that the wallet owner must approve. Amount is in nanoTON (1 TON = 1000000000). Supports optional payload BOC and stateInit for contract deployment. Use get_request_status to check approval.',
+    'transfer.request',
+    'Request a TON transfer that the wallet owner must approve. Amount is in nanoTON (1 TON = 1000000000). Supports optional payload BOC and stateInit for contract deployment. Use transfer.status to check approval.',
     {
       to: z.string().describe('Destination TON address (raw format 0:abc... or friendly EQ...)'),
       amountNano: z.string().describe('Amount in nanoTON. 1 TON = 1000000000 nanoTON'),
       payload: z.string().optional().describe('Optional BOC-encoded payload for the transaction'),
       stateInit: z.string().optional().describe('Optional stateInit BOC for deploying new smart contracts'),
     },
+    { title: 'Request Transfer', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_request_status',
+    'transfer.status',
     'Check the status of a transfer request. Returns: pending (waiting for approval), confirmed (signed and broadcast), rejected (user declined), or expired (5 min timeout). Also shows broadcast result if available.',
-    { id: z.string().describe('The request ID returned by request_transfer') },
+    { id: z.string().describe('The request ID returned by transfer.request') },
+    { title: 'Transfer Status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'list_pending_requests',
+    'transfer.pending',
     'List all transfer requests currently waiting for wallet owner approval.',
     {},
+    { title: 'Pending Transfers', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   // --- Lookup ---
 
   server.tool(
-    'resolve_name',
-    'Resolve a .ton domain name (e.g. "alice.ton") to a raw wallet address. Always use this before request_transfer when the user provides a .ton name.',
+    'lookup.resolve_name',
+    'Resolve a .ton domain name (e.g. "alice.ton") to a raw wallet address. Always use this before transfer.request when the user provides a .ton name.',
     { domain: z.string().describe('The .ton domain name to resolve, e.g. "alice.ton" or "foundation.ton"') },
+    { title: 'Resolve .ton Name', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_ton_price',
+    'lookup.price',
     'Get the current price of TON in USD, EUR, or other fiat currencies. Use to show users the value of their holdings.',
     { currencies: z.string().optional().describe('Comma-separated currency codes, e.g. "USD,EUR". Default: "USD"') },
+    { title: 'TON Price', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   // --- DEX ---
 
   server.tool(
-    'create_dex_order',
+    'dex.create_order',
     'Place a limit order on the open4dev DEX order book. Provide token pair, amount in smallest units, and human-readable price. The API handles decimal conversion, slippage (4% including fees), and gas automatically.',
     {
       fromToken: z.string().describe('Token to sell: TON, NOT, USDT, DOGS, BUILD, AGNT, CBBTC, PX, XAUT0'),
@@ -116,40 +127,45 @@ function createMcpServer() {
       amount: z.string().describe('Amount to sell in smallest unit. TON/NOT/DOGS/BUILD/AGNT use 9 decimals. USDT/XAUT0 use 6 decimals.'),
       price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT".'),
     },
+    { title: 'Create DEX Order', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'list_dex_pairs',
+    'dex.pairs',
     'List all available trading pairs and tokens on the open4dev DEX. Returns supported tokens: TON, NOT, USDT, DOGS, BUILD, AGNT, CBBTC, PX, XAUT0.',
     {},
+    { title: 'DEX Pairs', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   // --- Agent Wallet ---
 
   server.tool(
-    'deploy_agent_wallet',
+    'agent_wallet.deploy',
     'Deploy an Agent Wallet smart contract — a dedicated sub-wallet for autonomous transfers without approval. WARNING: The agent can spend all funds in this wallet without user confirmation. Only deploy when the user explicitly requests autonomous mode.',
     {},
+    { title: 'Deploy Agent Wallet', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'execute_agent_wallet_transfer',
+    'agent_wallet.transfer',
     'Send TON directly from an Agent Wallet — NO approval needed. Signs and broadcasts the transaction immediately. Only works with deployed agent wallets where the agent key is authorized.',
     {
       walletAddress: z.string().describe('The agent wallet contract address'),
       to: z.string().describe('Destination TON address'),
       amountNano: z.string().describe('Amount in nanoTON (1 TON = 1000000000)'),
     },
+    { title: 'Agent Wallet Transfer', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 
   server.tool(
-    'get_agent_wallet_info',
+    'agent_wallet.info',
     'Get info about Agent Wallets — balance, seqno, and agent key status. Pass a wallet address for details, or omit to list all your agent wallets.',
     { walletAddress: z.string().optional().describe('Agent wallet address. Omit to list all wallets.') },
+    { title: 'Agent Wallet Info', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => ({ content: [{ type: 'text' as const, text: 'Use stdio transport for full tool execution.' }] }),
   );
 

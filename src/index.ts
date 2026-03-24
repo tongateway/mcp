@@ -80,11 +80,12 @@ const server = new McpServer({
 });
 
 server.tool(
-  'request_auth',
-  'Authenticate with TON blockchain. Call this FIRST if you get "No token configured" errors. Generates a one-time link — ask the user to open it and connect their wallet. Then call get_auth_token to complete. Token persists across restarts.',
+  'auth.request',
+  'Authenticate with TON blockchain. Call this FIRST if you get "No token configured" errors. Generates a one-time link — ask the user to open it and connect their wallet. Then call auth.get_token to complete. Token persists across restarts.',
   {
     label: z.string().optional().describe('Label for this agent session (e.g. "claude-agent")'),
   },
+  { title: 'Request Authentication', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   async ({ label }) => {
     try {
       const result = await fetch(`${API_URL}/v1/auth/request`, {
@@ -108,7 +109,7 @@ server.tool(
               `Auth ID: ${data.authId}`,
               `Expires: ${new Date(data.expiresAt).toISOString()}`,
               ``,
-              `After the user connects their wallet, call get_auth_token with this authId to get the token.`,
+              `After the user connects their wallet, call auth.get_token with this authId to get the token.`,
             ].join('\n'),
           },
         ],
@@ -123,11 +124,12 @@ server.tool(
 );
 
 server.tool(
-  'get_auth_token',
-  'Complete authentication after the user opened the link from request_auth. Pass the authId you received. Once successful, all other tools become available. You only need to authenticate once — the token is saved automatically.',
+  'auth.get_token',
+  'Complete authentication after the user opened the link from auth.request. Pass the authId you received. Once successful, all other tools become available. You only need to authenticate once — the token is saved automatically.',
   {
-    authId: z.string().describe('The authId returned by request_auth'),
+    authId: z.string().describe('The authId returned by auth.request'),
   },
+  { title: 'Get Auth Token', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async ({ authId }) => {
     try {
       // Retry up to 3 times with 2s delay (KV eventual consistency)
@@ -151,7 +153,7 @@ server.tool(
                 `Authentication still pending.`,
                 `The user has not connected their wallet yet.`,
                 ``,
-                `Wait a moment and call get_auth_token again.`,
+                `Wait a moment and call auth.get_token again.`,
               ].join('\n'),
             },
           ],
@@ -171,7 +173,7 @@ server.tool(
               `Token received and configured.`,
               `Wallet: ${data.address}`,
               ``,
-              `You can now use request_transfer, get_request_status, and list_pending_requests.`,
+              `You can now use transfer.request, transfer.status, and transfer.pending.`,
             ].join('\n'),
           },
         ],
@@ -186,18 +188,19 @@ server.tool(
 );
 
 server.tool(
-  'request_transfer',
-  'Request a TON transfer. The user must approve it in their wallet app. Amount is in nanoTON (1 TON = 1000000000). Supports optional payload (BOC) and stateInit (for contract deployment). The transfer is queued — use get_request_status to check if approved.',
+  'transfer.request',
+  'Request a TON transfer. The user must approve it in their wallet app. Amount is in nanoTON (1 TON = 1000000000). Supports optional payload (BOC) and stateInit (for contract deployment). The transfer is queued — use transfer.status to check if approved.',
   {
     to: z.string().describe('Destination TON address'),
     amountNano: z.string().describe('Amount in nanoTON (1 TON = 1000000000)'),
     payload: z.string().optional().describe('Optional BOC-encoded payload for the transaction'),
     stateInit: z.string().optional().describe('Optional stateInit BOC for deploying new contracts'),
   },
+  { title: 'Request Transfer', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   async ({ to, amountNano, payload, stateInit }) => {
     if (!TOKEN) {
       return {
-        content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
+        content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first to authenticate.' }],
         isError: true,
       };
     }
@@ -238,15 +241,16 @@ server.tool(
 );
 
 server.tool(
-  'get_request_status',
+  'transfer.status',
   'Check the status of a transfer request. Statuses: pending (waiting for approval), confirmed (signed and broadcast), rejected (user declined), expired (5 min timeout). Also shows broadcast result if available.',
   {
-    id: z.string().describe('The request ID returned by request_transfer'),
+    id: z.string().describe('The request ID returned by transfer.request'),
   },
+  { title: 'Transfer Status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async ({ id }) => {
     if (!TOKEN) {
       return {
-        content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
+        content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first to authenticate.' }],
         isError: true,
       };
     }
@@ -283,13 +287,14 @@ server.tool(
 );
 
 server.tool(
-  'list_pending_requests',
+  'transfer.pending',
   'List all transfer requests waiting for wallet owner approval. Use to check if there are unfinished transfers.',
   {},
+  { title: 'Pending Transfers', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async () => {
     if (!TOKEN) {
       return {
-        content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first to authenticate.' }],
+        content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first to authenticate.' }],
         isError: true,
       };
     }
@@ -326,12 +331,13 @@ server.tool(
 );
 
 server.tool(
-  'get_wallet_info',
+  'wallet.info',
   'Get the connected wallet address, TON balance (in nanoTON and TON), and account status. Use this to check how much TON the user has before sending transfers.',
   {},
+  { title: 'Wallet Info', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async () => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       const result = await apiCall('/v1/wallet/balance');
@@ -354,12 +360,13 @@ server.tool(
 );
 
 server.tool(
-  'get_jetton_balances',
+  'wallet.jettons',
   'List all tokens (jettons) in the wallet — USDT, NOT, DOGS, and others. Shows symbol, name, balance, and decimals for each. Use this when the user asks about their tokens or wants to know what they hold.',
   {},
+  { title: 'Jetton Balances', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async () => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       const result = await apiCall('/v1/wallet/jettons');
@@ -384,14 +391,15 @@ server.tool(
 );
 
 server.tool(
-  'get_transactions',
+  'wallet.transactions',
   'Get recent transaction history. Shows timestamps, action types, and whether transactions were flagged as scam. Use when the user asks "what happened" or wants to review recent activity.',
   {
     limit: z.number().optional().describe('Number of transactions to return (default 10)'),
   },
+  { title: 'Transaction History', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async ({ limit }) => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       const result = await apiCall(`/v1/wallet/transactions?limit=${limit ?? 10}`);
@@ -414,12 +422,13 @@ server.tool(
 );
 
 server.tool(
-  'get_nft_items',
+  'wallet.nfts',
   'List all NFTs owned by the wallet — name, collection, and address for each. Use when the user asks about their NFTs or collectibles.',
   {},
+  { title: 'NFT Items', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async () => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       const result = await apiCall('/v1/wallet/nfts');
@@ -440,11 +449,12 @@ server.tool(
 );
 
 server.tool(
-  'resolve_name',
-  'Resolve a .ton domain name (like "alice.ton") to a raw wallet address. ALWAYS use this before request_transfer when the user gives a .ton name instead of a raw address.',
+  'lookup.resolve_name',
+  'Resolve a .ton domain name (like "alice.ton") to a raw wallet address. ALWAYS use this before transfer.request when the user gives a .ton name instead of a raw address.',
   {
     domain: z.string().describe('The .ton domain name to resolve (e.g. "alice.ton")'),
   },
+  { title: 'Resolve .ton Name', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async ({ domain }) => {
     try {
       const result = await fetch(`${API_URL}/v1/dns/${encodeURIComponent(domain)}/resolve`);
@@ -463,11 +473,12 @@ server.tool(
 );
 
 server.tool(
-  'get_ton_price',
+  'lookup.price',
   'Get the current TON price in USD, EUR, or other currencies. Use when the user asks "how much is my TON worth" or before transfers to show USD equivalents.',
   {
     currencies: z.string().optional().describe('Comma-separated currencies (default "USD")'),
   },
+  { title: 'TON Price', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async ({ currencies }) => {
     try {
       const curr = currencies || 'USD';
@@ -486,7 +497,7 @@ server.tool(
 );
 
 server.tool(
-  'create_dex_order',
+  'dex.create_order',
   'Place a limit order on the open4dev DEX order book. Provide the token pair, amount in smallest units, and price in human-readable format (e.g. price=20 means "1 fromToken = 20 toToken"). The API handles all decimal conversions and slippage automatically. The order requires wallet approval.',
   {
     fromToken: z.string().describe('Token to sell, e.g. "NOT", "TON", "USDT"'),
@@ -494,9 +505,10 @@ server.tool(
     amount: z.string().describe('Amount to sell in smallest unit. TON/NOT/DOGS/BUILD/AGNT use 9 decimals (1 TON = 10^9). USDT/XAUT0 use 6 decimals (1 USDT = 10^6).'),
     price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT". price=0.05 means "1 AGNT = 0.05 USDT".'),
   },
+  { title: 'Create DEX Order', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   async ({ fromToken, toToken, amount, price }) => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       const result = await apiCall('/v1/dex/order', {
@@ -527,9 +539,10 @@ server.tool(
 );
 
 server.tool(
-  'list_dex_pairs',
+  'dex.pairs',
   'List available trading pairs on the DEX. Shows which token swaps are configured and available.',
   {},
+  { title: 'DEX Pairs', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async () => {
     try {
       const result = await fetch(`${API_URL}/v1/dex/pairs`);
@@ -548,12 +561,13 @@ server.tool(
 );
 
 server.tool(
-  'deploy_agent_wallet',
+  'agent_wallet.deploy',
   'Deploy an Agent Wallet smart contract — a dedicated sub-wallet for autonomous operations. WARNING: The agent can spend funds from this wallet WITHOUT user approval. Only deploy if the user explicitly wants autonomous transfers. After deployment, top up the wallet with funds.',
   {},
+  { title: 'Deploy Agent Wallet', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   async () => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       // Get owner's public key
@@ -647,16 +661,17 @@ server.tool(
 );
 
 server.tool(
-  'execute_agent_wallet_transfer',
+  'agent_wallet.transfer',
   'Send TON directly from an Agent Wallet — NO approval needed. The agent signs and broadcasts immediately. Only works with deployed agent wallets. Use for automated/autonomous transfers where speed matters and the user has opted in.',
   {
     walletAddress: z.string().describe('The agent wallet contract address'),
     to: z.string().describe('Destination TON address'),
     amountNano: z.string().describe('Amount in nanoTON'),
   },
+  { title: 'Agent Wallet Transfer', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   async ({ walletAddress, to, amountNano }) => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       const { Cell, beginCell, Address, SendMode, external, storeMessage } = await import('@ton/core');
@@ -761,14 +776,15 @@ server.tool(
 );
 
 server.tool(
-  'get_agent_wallet_info',
+  'agent_wallet.info',
   'Get info about Agent Wallets — balance, seqno, agent key status. Pass a wallet address for details, or omit to list all agent wallets.',
   {
     walletAddress: z.string().optional().describe('Agent wallet address. If omitted, lists all your agent wallets.'),
   },
+  { title: 'Agent Wallet Info', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   async ({ walletAddress }) => {
     if (!TOKEN) {
-      return { content: [{ type: 'text' as const, text: 'No token configured. Use request_auth first.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
       if (!walletAddress) {
@@ -776,7 +792,7 @@ server.tool(
         const result = await apiCall('/v1/agent-wallet/list');
         const wallets = result.wallets || [];
         if (!wallets.length) {
-          return { content: [{ type: 'text' as const, text: 'No agent wallets found. Use deploy_agent_wallet to create one.' }] };
+          return { content: [{ type: 'text' as const, text: 'No agent wallets found. Use agent_wallet.deploy to create one.' }] };
         }
         const lines = wallets.map((w: any) =>
           `- ${w.address} (created ${new Date(w.createdAt).toISOString()})`
@@ -823,7 +839,7 @@ if (httpPort) {
     // Health check
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, version: '0.12.0' }));
+      res.end(JSON.stringify({ ok: true, version: '0.14.0' }));
       return;
     }
 
