@@ -126,6 +126,10 @@ agent_wallet.transfer({ walletAddress: "EQCT1...", to: "0:abc...", amountNano: "
 - **Always use `lookup.resolve_name`** when the user gives a .ton domain
 - **Token persists** in `~/.tongateway/token` across restarts
 
+## Security
+
+See [SECURITY.md](https://github.com/tongateway/mcp/blob/main/SECURITY.md) for full security model details.
+
 ## Links
 
 - Website: https://tongateway.ai
