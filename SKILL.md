@@ -13,9 +13,9 @@ Agent Gateway gives you 16 tools to interact with TON blockchain. Check balances
 
 If you get "No token configured" errors, authenticate first:
 
-1. Call `request_auth` — you'll get a one-time link
+1. Call `auth.request` — you'll get a one-time link
 2. Ask the user to open the link and connect their wallet
-3. Call `get_auth_token` with the authId — you'll get a token
+3. Call `auth.get_token` with the authId — you'll get a token
 4. All other tools now work. Token persists across restarts.
 
 ## Tools
@@ -24,47 +24,47 @@ If you get "No token configured" errors, authenticate first:
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `get_wallet_info` | — | Wallet address, TON balance, account status |
-| `get_jetton_balances` | — | All token balances (USDT, NOT, DOGS, etc.) |
-| `get_transactions` | `limit?` (number) | Recent transaction history |
-| `get_nft_items` | — | NFTs owned by the wallet |
+| `wallet.info` | — | Wallet address, TON balance, account status |
+| `wallet.jettons` | — | All token balances (USDT, NOT, DOGS, etc.) |
+| `wallet.transactions` | `limit?` (number) | Recent transaction history |
+| `wallet.nfts` | — | NFTs owned by the wallet |
 
 ### Transfers (Safe — requires wallet approval)
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `request_transfer` | `to`, `amountNano`, `payload?`, `stateInit?` | Queue a TON transfer for owner approval |
-| `get_request_status` | `id` | Check status: pending, confirmed, rejected, expired |
-| `list_pending_requests` | — | List all pending transfer requests |
+| `transfer.request` | `to`, `amountNano`, `payload?`, `stateInit?` | Queue a TON transfer for owner approval |
+| `transfer.status` | `id` | Check status: pending, confirmed, rejected, expired |
+| `transfer.pending` | — | List all pending transfer requests |
 
 ### Lookup
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `resolve_name` | `domain` | Resolve .ton domain to address. ALWAYS use before transfer when user gives a .ton name |
-| `get_ton_price` | `currencies?` | TON price in USD/EUR/etc. |
+| `lookup.resolve_name` | `domain` | Resolve .ton domain to address. ALWAYS use before transfer when user gives a .ton name |
+| `lookup.price` | `currencies?` | TON price in USD/EUR/etc. |
 
 ### DEX (open4dev order book)
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `create_dex_order` | `fromToken`, `toToken`, `amount`, `priceRateNano` | Place a limit order on the DEX |
-| `list_dex_pairs` | — | List available trading pairs |
+| `dex.create_order` | `fromToken`, `toToken`, `amount`, `price` | Place a limit order. Price is human-readable (e.g. 20 = "1 USDT = 20 AGNT") |
+| `dex.pairs` | — | List available trading pairs |
 
 ### Agent Wallet (Autonomous — NO approval needed)
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `deploy_agent_wallet` | — | Deploy a dedicated wallet contract. WARNING: agent can spend funds without approval |
-| `execute_agent_wallet_transfer` | `walletAddress`, `to`, `amountNano` | Send TON directly from agent wallet |
-| `get_agent_wallet_info` | `walletAddress?` | Balance, seqno, status. Omit address to list all |
+| `agent_wallet.deploy` | — | Deploy a dedicated wallet contract. WARNING: agent can spend funds without approval |
+| `agent_wallet.transfer` | `walletAddress`, `to`, `amountNano` | Send TON directly from agent wallet |
+| `agent_wallet.info` | `walletAddress?` | Balance, seqno, status. Omit address to list all |
 
 ### Auth
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `request_auth` | `label?` | Generate a one-time auth link |
-| `get_auth_token` | `authId` | Retrieve token after user connects wallet |
+| `auth.request` | `label?` | Generate a one-time auth link |
+| `auth.get_token` | `authId` | Retrieve token after user connects wallet |
 
 ## Amount conversion
 
@@ -77,42 +77,44 @@ Amounts are in **nanoTON**: 1 TON = 1,000,000,000 nanoTON
 | 1 | 1000000000 |
 | 10 | 10000000000 |
 
+**Token decimals:** TON/NOT/DOGS/BUILD/AGNT/PX/CBBTC = 9 decimals. USDT/XAUT0 = 6 decimals.
+
 ## Usage examples
 
 ### Check wallet and tokens
 
 ```
-get_wallet_info()
+wallet.info()
 → Address: 0:9d43...0c02, Balance: 823.18 TON, Status: active
 
-get_jetton_balances()
+wallet.jettons()
 → USDT: 107.79, NOT: 3,186,370.60, BUILD: 45,277.57
 ```
 
 ### Send TON to .ton domain
 
 ```
-resolve_name({ domain: "alice.ton" })
+lookup.resolve_name({ domain: "alice.ton" })
 → alice.ton → 0:83df...31a8
 
-request_transfer({ to: "0:83df...31a8", amountNano: "500000000" })
+transfer.request({ to: "0:83df...31a8", amountNano: "500000000" })
 → Transfer request created. Approve in your wallet app.
 ```
 
 ### Place a DEX order
 
 ```
-create_dex_order({ fromToken: "NOT", toToken: "TON", amount: "10000000000", priceRateNano: "..." })
+dex.create_order({ fromToken: "NOT", toToken: "TON", amount: "10000000000000", price: 0.000289 })
 → Order placed on open4dev DEX. Approve in your wallet app.
 ```
 
 ### Autonomous transfer (no approval)
 
 ```
-deploy_agent_wallet()
+agent_wallet.deploy()
 → Agent Wallet deployed at EQCT1...
 
-execute_agent_wallet_transfer({ walletAddress: "EQCT1...", to: "0:abc...", amountNano: "500000000" })
+agent_wallet.transfer({ walletAddress: "EQCT1...", to: "0:abc...", amountNano: "500000000" })
 → Transfer executed. No approval needed.
 ```
 
@@ -121,7 +123,7 @@ execute_agent_wallet_transfer({ walletAddress: "EQCT1...", to: "0:abc...", amoun
 - **Safe mode (default):** You request transfers, the wallet owner approves on their phone
 - **Autonomous mode:** Agent wallet — agent signs directly, no approval. Only use when user explicitly asks
 - **Requests expire in 5 minutes** if not approved
-- **Always use `resolve_name`** when the user gives a .ton domain
+- **Always use `lookup.resolve_name`** when the user gives a .ton domain
 - **Token persists** in `~/.tongateway/token` across restarts
 
 ## Links

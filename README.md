@@ -52,7 +52,7 @@ openclaw config set --strict-json plugins.entries.acpx.config.mcpServers '{
 }'
 ```
 
-No token needed upfront — the agent authenticates via `request_auth` (generates a one-time link, user connects wallet). Token persists in `~/.tongateway/token` across restarts.
+No token needed upfront — the agent authenticates via `auth.request` (generates a one-time link, user connects wallet). Token persists in `~/.tongateway/token` across restarts.
 
 ## Tools
 
@@ -60,48 +60,55 @@ No token needed upfront — the agent authenticates via `request_auth` (generate
 
 | Tool | Description |
 |------|-------------|
-| `request_auth` | Generate a one-time link for wallet connection |
-| `get_auth_token` | Retrieve token after user connects wallet |
+| `auth.request` | Generate a one-time link for wallet connection |
+| `auth.get_token` | Retrieve token after user connects wallet |
 
 ### Wallet
 
 | Tool | Description |
 |------|-------------|
-| `get_wallet_info` | Wallet address, TON balance, account status |
-| `get_jetton_balances` | All token balances (USDT, NOT, DOGS, etc.) |
-| `get_transactions` | Recent transaction history |
-| `get_nft_items` | NFTs owned by the wallet |
+| `wallet.info` | Wallet address, TON balance, account status |
+| `wallet.jettons` | All token balances (USDT, NOT, DOGS, etc.) |
+| `wallet.transactions` | Recent transaction history |
+| `wallet.nfts` | NFTs owned by the wallet |
 
 ### Transfers (Safe — requires wallet approval)
 
 | Tool | Description |
 |------|-------------|
-| `request_transfer` | Request a TON transfer (to, amountNano, payload?, stateInit?) |
-| `get_request_status` | Check transfer status by ID |
-| `list_pending_requests` | List all pending requests |
+| `transfer.request` | Request a TON transfer (to, amountNano, payload?, stateInit?) |
+| `transfer.status` | Check transfer status by ID |
+| `transfer.pending` | List all pending requests |
 
 ### Lookup
 
 | Tool | Description |
 |------|-------------|
-| `resolve_name` | Resolve .ton domain to address |
-| `get_ton_price` | Current TON price in USD/EUR |
+| `lookup.resolve_name` | Resolve .ton domain to address |
+| `lookup.price` | Current TON price in USD/EUR |
+
+### DEX (open4dev order book)
+
+| Tool | Description |
+|------|-------------|
+| `dex.create_order` | Place a limit order (fromToken, toToken, amount, price) |
+| `dex.pairs` | List available trading pairs |
 
 ### Agent Wallet (Autonomous — no approval needed)
 
 | Tool | Description |
 |------|-------------|
-| `deploy_agent_wallet` | Deploy a dedicated wallet contract for the agent |
-| `execute_agent_wallet_transfer` | Send TON directly from agent wallet |
-| `get_agent_wallet_info` | Balance, seqno, agent key status |
+| `agent_wallet.deploy` | Deploy a dedicated wallet contract for the agent |
+| `agent_wallet.transfer` | Send TON directly from agent wallet |
+| `agent_wallet.info` | Balance, seqno, agent key status |
 
 ## How it works
 
 ```
 You: "Send 1 TON to alice.ton"
 
-Agent: resolve_name("alice.ton") → 0:83df...
-       request_transfer(to="0:83df...", amountNano="1000000000")
+Agent: lookup.resolve_name("alice.ton") → 0:83df...
+       transfer.request(to="0:83df...", amountNano="1000000000")
        → Transfer request created. Approve in your wallet app.
 ```
 
@@ -110,7 +117,7 @@ For agent wallets (autonomous mode):
 ```
 You: "Send 0.5 TON from my agent wallet to 0:abc..."
 
-Agent: execute_agent_wallet_transfer(wallet, to, amount)
+Agent: agent_wallet.transfer(wallet, to, amount)
        → Transfer executed. No approval needed.
 ```
 
