@@ -121,6 +121,35 @@ Agent: agent_wallet.transfer(wallet, to, amount)
        → Transfer executed. No approval needed.
 ```
 
+## Build from Source
+
+If you prefer not to use `npx`, you can build and run locally:
+
+```bash
+git clone https://github.com/tongateway/mcp
+cd mcp
+npm install
+npm run build
+```
+
+Then configure your MCP client to use the local build:
+
+```json
+{
+  "mcpServers": {
+    "tongateway": {
+      "command": "node",
+      "args": ["/path/to/mcp/dist/index.js"],
+      "env": {
+        "AGENT_GATEWAY_API_URL": "https://api.tongateway.ai"
+      }
+    }
+  }
+}
+```
+
+See [SECURITY.md](SECURITY.md) for the full security model.
+
 ## Links
 
 - [tongateway.ai](https://tongateway.ai) — landing page + install guides
