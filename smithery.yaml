@@ -1,3 +1,25 @@
+name: Agent Gateway
+description: >
+  TON blockchain gateway for AI agents. 16 tools for wallet info, TON transfers,
+  jetton balances, NFTs, transaction history, .ton DNS resolution, token prices,
+  DEX order book trading, and autonomous agent wallets. No private keys shared
+  with agents — transfers require wallet owner approval via TON Connect.
+homepage: https://tongateway.ai
+repository: https://github.com/tongateway/mcp
+icon: https://tongateway.ai/icon.png
+license: MIT
+author: tongateway
+tags:
+  - ton
+  - blockchain
+  - crypto
+  - wallet
+  - transfer
+  - jetton
+  - nft
+  - dex
+  - mcp
+
 startCommand:
   type: stdio
   configSchema:
@@ -6,13 +28,17 @@ startCommand:
       AGENT_GATEWAY_API_URL:
         type: string
         default: "https://api.tongateway.ai"
-        description: "Agent Gateway API URL"
+        description: "The Agent Gateway API base URL. Default points to production. Change only if self-hosting."
+      AGENT_GATEWAY_TOKEN:
+        type: string
+        description: "Pre-configured auth token (optional). If not set, the agent authenticates automatically via auth.request tool."
     required: []
   commandFunction: |-
     (config) => ({
       command: 'npx',
       args: ['-y', '@tongateway/mcp'],
       env: {
-        AGENT_GATEWAY_API_URL: config.AGENT_GATEWAY_API_URL || 'https://api.tongateway.ai'
+        AGENT_GATEWAY_API_URL: config.AGENT_GATEWAY_API_URL || 'https://api.tongateway.ai',
+        ...(config.AGENT_GATEWAY_TOKEN ? { AGENT_GATEWAY_TOKEN: config.AGENT_GATEWAY_TOKEN } : {})
       }
     })
