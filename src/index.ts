@@ -373,6 +373,64 @@ server.tool(
 );
 
 server.tool(
+  'transfer.batch',
+  'Send multiple TON transfers in a SINGLE wallet approval. Up to 4 transfers per batch (v4 wallet). All transfers appear as one transaction to sign. Use for batch payments, multi-recipient sends, or multiple DEX orders at once.',
+  {
+    transfers: z.string().describe('JSON array of transfers: [{"to":"addr","amountNano":"1000000000","comment":"optional text"},...]'),
+  },
+  { title: 'Batch Transfer', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  async ({ transfers: transfersJson }) => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
+    }
+    try {
+      const transfers = JSON.parse(transfersJson) as Array<{ to: string; amountNano: string; comment?: string }>;
+      if (!transfers.length) throw new Error('No transfers provided');
+      if (transfers.length > 4) throw new Error('Max 4 transfers per batch (v4 wallet). Use agent_wallet.batch_transfer for more.');
+
+      // Encode comments as payloads
+      const processed = [];
+      for (const t of transfers) {
+        const entry: any = { to: t.to, amountNano: t.amountNano };
+        if (t.comment) {
+          const { beginCell } = await import('@ton/core');
+          const commentCell = beginCell().storeUint(0, 32).storeStringTail(t.comment).endCell();
+          entry.payload = commentCell.toBoc().toString('base64');
+        }
+        processed.push(entry);
+      }
+
+      const result = await apiCall('/v1/safe/tx/batch', {
+        method: 'POST',
+        body: JSON.stringify({ transfers: processed }),
+      });
+
+      const totalNano = BigInt(result.batch?.totalNano ?? '0');
+      const totalTon = (totalNano / 1000000000n).toString() + '.' +
+        (totalNano % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '') || '0';
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            `Batch transfer created! ${transfers.length} transfers in 1 approval.`,
+            '',
+            `Total: ${totalTon} TON`,
+            `Request ID: ${result.id}`,
+            '',
+            ...transfers.map((t, i) => `  ${i + 1}. ${t.amountNano} nanoTON → ${t.to.slice(0, 16)}...${t.comment ? ` "${t.comment}"` : ''}`),
+            '',
+            'Approve in your wallet app — one signature for all transfers.',
+          ].join('\n'),
+        }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
   'wallet.info',
   'Get the connected wallet address, TON balance (in nanoTON and TON), and account status. Use this to check how much TON the user has before sending transfers.',
   {},
@@ -819,7 +877,7 @@ server.tool(
 
 server.tool(
   'agent_wallet.batch_transfer',
-  'Send multiple TON transfers in a SINGLE transaction from an Agent Wallet — NO approval needed. All transfers are executed atomically in one external message. Max 255 transfers per batch.',
+  'Send multiple TON transfers in a SINGLE transaction from an Agent Wallet — NO approval needed. All transfers are executed atomically in one external message. Max 255 actions per transaction.',
   {
     walletAddress: z.string().describe('The agent wallet contract address'),
     transfers: z.string().describe('JSON array of transfers: [{"to":"addr","amountNano":"1000000000"},...]'),
