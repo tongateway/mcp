@@ -220,15 +220,16 @@ server.tool(
 
 server.tool(
   'transfer.request',
-  'Request a TON transfer. The user must approve it in their wallet app. Amount is in nanoTON (1 TON = 1000000000). Supports optional payload (BOC) and stateInit (for contract deployment). The transfer is queued — use transfer.status to check if approved.',
+  'Request a TON transfer. The user must approve it in their wallet app. Amount is in nanoTON (1 TON = 1000000000). Use the comment parameter to attach a text message. The transfer is queued — use transfer.status to check if approved.',
   {
     to: z.string().describe('Destination TON address'),
     amountNano: z.string().describe('Amount in nanoTON (1 TON = 1000000000)'),
-    payload: z.string().optional().describe('Optional BOC-encoded payload for the transaction'),
+    comment: z.string().optional().describe('Text comment/message to attach to the transfer (e.g. "Payment for services")'),
+    payload: z.string().optional().describe('Optional BOC-encoded payload (advanced — use comment for simple text messages)'),
     stateInit: z.string().optional().describe('Optional stateInit BOC for deploying new contracts'),
   },
   { title: 'Request Transfer', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  async ({ to, amountNano, payload, stateInit }) => {
+  async ({ to, amountNano, comment, payload, stateInit }) => {
     if (!TOKEN) {
       return {
         content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first to authenticate.' }],
@@ -237,7 +238,17 @@ server.tool(
     }
     try {
       const body: Record<string, string> = { to, amountNano };
-      if (payload) body.payload = payload;
+      // Encode text comment as TON payload (32 zero bits + UTF-8 text)
+      if (comment && !payload) {
+        const { beginCell } = await import('@ton/core');
+        const commentCell = beginCell()
+          .storeUint(0, 32) // text comment tag
+          .storeStringTail(comment)
+          .endCell();
+        body.payload = commentCell.toBoc().toString('base64');
+      } else if (payload) {
+        body.payload = payload;
+      }
       if (stateInit) body.stateInit = stateInit;
 
       const result = await apiCall('/v1/safe/tx/transfer', {

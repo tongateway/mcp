@@ -38,7 +38,7 @@ Or build from source: `git clone https://github.com/tongateway/mcp && cd mcp && 
 
 | Tool | Params | Description |
 |------|--------|-------------|
-| `transfer.request` | `to`, `amountNano` | Request a TON transfer — owner approves on phone |
+| `transfer.request` | `to`, `amountNano`, `comment?` | Request a TON transfer — owner approves on phone |
 | `transfer.status` | `id` | Check status: pending, confirmed, rejected, expired |
 | `transfer.pending` | — | List pending transfer requests |
 
@@ -85,6 +85,12 @@ wallet.info() → Balance: 823.18 TON, Status: active
 ```
 lookup.resolve_name({ domain: "alice.ton" }) → 0:83df...31a8
 transfer.request({ to: "0:83df...31a8", amountNano: "500000000" }) → Approve in wallet
+```
+
+### Send TON with comment
+```
+transfer.request({ to: "0:83df...31a8", amountNano: "1000000000", comment: "Payment for services" })
+→ Transfer with message created. Approve in wallet.
 ```
 
 ### DEX order
