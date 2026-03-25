@@ -1,5 +1,36 @@
 #!/usr/bin/env node
 
+// Handle --help and --version before importing anything
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(`@tongateway/mcp — TON blockchain gateway for AI agents
+
+Usage:
+  npx @tongateway/mcp              Start MCP server (stdio transport)
+  npx @tongateway/mcp --http       Start HTTP server (port 3100)
+
+Environment variables:
+  AGENT_GATEWAY_API_URL   API base URL (default: https://api.tongateway.ai)
+  AGENT_GATEWAY_TOKEN     Pre-configured auth token (optional)
+  MCP_HTTP_PORT           HTTP server port (default: 3100 with --http)
+
+Tools (16):
+  auth.request, auth.get_token
+  wallet.info, wallet.jettons, wallet.transactions, wallet.nfts
+  transfer.request, transfer.status, transfer.pending
+  lookup.resolve_name, lookup.price
+  dex.create_order, dex.pairs
+  agent_wallet.deploy, agent_wallet.transfer, agent_wallet.info
+
+Docs: https://tongateway.ai/docs
+GitHub: https://github.com/tongateway/mcp`);
+  process.exit(0);
+}
+
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  console.log('0.15.0');
+  process.exit(0);
+}
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
