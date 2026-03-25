@@ -818,6 +818,123 @@ server.tool(
 );
 
 server.tool(
+  'agent_wallet.batch_transfer',
+  'Send multiple TON transfers in a SINGLE transaction from an Agent Wallet — NO approval needed. All transfers are executed atomically in one external message. Max 255 transfers per batch.',
+  {
+    walletAddress: z.string().describe('The agent wallet contract address'),
+    transfers: z.string().describe('JSON array of transfers: [{"to":"addr","amountNano":"1000000000"},...]'),
+  },
+  { title: 'Batch Transfer from Agent Wallet', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  async ({ walletAddress, transfers: transfersJson }) => {
+    if (!TOKEN) {
+      return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
+    }
+    try {
+      const { Cell, beginCell, Address, SendMode, external, storeMessage } = await import('@ton/core');
+      const { sign, keyPairFromSeed } = await import('@ton/crypto');
+
+      const transfers = JSON.parse(transfersJson) as Array<{ to: string; amountNano: string; payload?: string }>;
+      if (!transfers.length) throw new Error('No transfers provided');
+      if (transfers.length > 255) throw new Error('Max 255 transfers per batch');
+
+      const localWallets = loadLocalWallets();
+      const localConfig = localWallets[walletAddress];
+      if (!localConfig) throw new Error('Agent wallet secret key not found locally.');
+
+      const infoResult = await apiCall(`/v1/agent-wallet/${encodeURIComponent(walletAddress)}/info`);
+      const seqno = infoResult.seqno;
+      const walletId = localConfig.walletId;
+
+      const secretKeyBuf = Buffer.from(localConfig.agentSecretKey, 'hex');
+      let secretKey: Buffer;
+      if (secretKeyBuf.length === 64) {
+        secretKey = secretKeyBuf;
+      } else {
+        const kp = keyPairFromSeed(secretKeyBuf);
+        secretKey = kp.secretKey;
+      }
+
+      // Build actions list with all transfers
+      const sendMode = SendMode.PAY_GAS_SEPARATELY + SendMode.IGNORE_ERRORS;
+      let actionsList = beginCell().endCell(); // empty tail
+
+      for (const t of transfers) {
+        const destAddr = Address.parse(t.to);
+        const transferMsg = beginCell()
+          .storeUint(0x18, 6)
+          .storeAddress(destAddr)
+          .storeCoins(BigInt(t.amountNano))
+          .storeUint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+          .endCell();
+
+        actionsList = beginCell()
+          .storeRef(actionsList)
+          .storeUint(0x0ec3c86d, 32)
+          .storeUint(sendMode, 8)
+          .storeRef(transferMsg)
+          .endCell();
+      }
+
+      // Build and sign external message
+      const validUntil = Math.floor(Date.now() / 1000) + 300;
+      const unsignedBody = beginCell()
+        .storeUint(0x7369676e, 32)
+        .storeUint(walletId, 32)
+        .storeUint(validUntil, 32)
+        .storeUint(seqno, 32)
+        .storeMaybeRef(actionsList)
+        .endCell();
+
+      const signature = sign(unsignedBody.hash(), secretKey);
+      const signedBody = beginCell()
+        .storeSlice(unsignedBody.beginParse())
+        .storeBuffer(signature)
+        .endCell();
+
+      const vaultAddr = Address.parse(walletAddress);
+      const extMsg = external({ to: vaultAddr, body: signedBody });
+      const boc = beginCell().store(storeMessage(extMsg)).endCell().toBoc().toString('base64');
+
+      // Broadcast
+      const broadcastRes = await fetch('https://toncenter.com/api/v2/sendBoc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boc }),
+      });
+      const broadcastData = await broadcastRes.json() as any;
+
+      if (!broadcastData.ok) {
+        throw new Error(`Broadcast failed: ${broadcastData.error || JSON.stringify(broadcastData)}`);
+      }
+
+      const totalNano = transfers.reduce((sum, t) => sum + BigInt(t.amountNano), 0n);
+      const totalTon = (totalNano / 1000000000n).toString() + '.' +
+        (totalNano % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '');
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: [
+            `Batch transfer executed! ${transfers.length} transfers in 1 transaction.`,
+            '',
+            `From: ${walletAddress}`,
+            `Total: ${totalTon} TON`,
+            `Transfers: ${transfers.length}`,
+            `Seqno: ${seqno}`,
+            '',
+            ...transfers.map((t, i) => `  ${i + 1}. ${t.amountNano} nanoTON → ${t.to.slice(0, 12)}...`),
+            '',
+            'All broadcast successfully. No approval needed.',
+          ].join('\n'),
+        }],
+      };
+    } catch (e: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.tool(
   'agent_wallet.info',
   'Get info about Agent Wallets — balance, seqno, agent key status. Pass a wallet address for details, or omit to list all agent wallets.',
   {
