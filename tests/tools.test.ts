@@ -230,7 +230,7 @@ describe('MCP Server', () => {
 
     // Tools with required params — pass dummy values to get past validation
     const paramTools: Array<[string, any]> = [
-      ['transfer.request', { to: '0:abc', amountNano: '1000' }],
+      ['transfer.request', { to: '0:abc', amount: '1' }],
       ['transfer.status', { id: 'test-id' }],
       ['transfer.batch', { transfers: '[]' }],
       ['wallet.transactions', { limit: 5 }],
@@ -304,7 +304,7 @@ describe('MCP Server', () => {
     const props = tool.inputSchema.properties;
 
     expect(props.to).toBeDefined();
-    expect(props.amountNano).toBeDefined();
+    expect(props.amount).toBeDefined();
     expect(props.comment).toBeDefined();
     expect(props.payload).toBeDefined();
     expect(props.stateInit).toBeDefined();

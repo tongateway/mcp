@@ -220,16 +220,16 @@ server.tool(
 
 server.tool(
   'transfer.request',
-  'Request a TON transfer. The user must approve it in their wallet app. Amount is in nanoTON (1 TON = 1000000000). Use the comment parameter to attach a text message. The transfer is queued — use transfer.status to check if approved.',
+  'Send a TON transfer. The user approves in their wallet app. Use human-readable amounts (e.g. amount="1.5"). Supports .ton domain names directly (e.g. to="alice.ton"). The API handles name resolution and decimal conversion automatically.',
   {
-    to: z.string().describe('Destination TON address'),
-    amountNano: z.string().describe('Amount in nanoTON (1 TON = 1000000000)'),
-    comment: z.string().optional().describe('Text comment/message to attach to the transfer (e.g. "Payment for services")'),
-    payload: z.string().optional().describe('Optional BOC-encoded payload (advanced — use comment for simple text messages)'),
-    stateInit: z.string().optional().describe('Optional stateInit BOC for deploying new contracts'),
+    to: z.string().describe('Destination: TON address or .ton domain (e.g. "alice.ton" or "EQD...abc")'),
+    amount: z.string().describe('Human-readable amount (e.g. "1.5" for 1.5 TON, "100" for 100 TON)'),
+    comment: z.string().optional().describe('Text comment/message to attach (e.g. "Payment for services")'),
+    payload: z.string().optional().describe('Optional BOC-encoded payload (advanced — use comment for text)'),
+    stateInit: z.string().optional().describe('Optional stateInit BOC for contract deployment'),
   },
   { title: 'Request Transfer', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  async ({ to, amountNano, comment, payload, stateInit }) => {
+  async ({ to, amount, comment, payload, stateInit }) => {
     if (!TOKEN) {
       return {
         content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first to authenticate.' }],
@@ -237,18 +237,9 @@ server.tool(
       };
     }
     try {
-      const body: Record<string, string> = { to, amountNano };
-      // Encode text comment as TON payload (32 zero bits + UTF-8 text)
-      if (comment && !payload) {
-        const { beginCell } = await import('@ton/core');
-        const commentCell = beginCell()
-          .storeUint(0, 32) // text comment tag
-          .storeStringTail(comment)
-          .endCell();
-        body.payload = commentCell.toBoc().toString('base64');
-      } else if (payload) {
-        body.payload = payload;
-      }
+      const body: Record<string, any> = { to, amount };
+      if (comment) body.comment = comment;
+      if (payload) body.payload = payload;
       if (stateInit) body.stateInit = stateInit;
 
       const result = await apiCall('/v1/safe/tx/transfer', {
@@ -263,13 +254,13 @@ server.tool(
             text: [
               `Transfer request created.`,
               `ID: ${result.id}`,
-              `To: ${result.to}`,
-              `Amount: ${result.amountNano} nanoTON`,
+              `To: ${result.resolved ? `${result.resolved.from} → ${result.resolved.to}` : result.to}`,
+              `Amount: ${amount} TON (${result.amountNano} nanoTON)`,
               `Status: ${result.status}`,
-              `Expires: ${new Date(result.expiresAt).toISOString()}`,
+              comment ? `Comment: ${comment}` : null,
               ``,
-              `The wallet owner must approve this in their TON Connect client.`,
-            ].join('\n'),
+              `Approve in your wallet app.`,
+            ].filter(Boolean).join('\n'),
           },
         ],
       };
