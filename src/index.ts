@@ -238,8 +238,14 @@ server.tool(
     }
     try {
       const body: Record<string, any> = { to, amount };
-      if (comment) body.comment = comment;
-      if (payload) body.payload = payload;
+      // Encode comment as BOC payload using @ton/core
+      if (comment && !payload) {
+        const { beginCell } = await import('@ton/core');
+        const commentCell = beginCell().storeUint(0, 32).storeStringTail(comment).endCell();
+        body.payload = commentCell.toBoc().toString('base64');
+      } else if (payload) {
+        body.payload = payload;
+      }
       if (stateInit) body.stateInit = stateInit;
 
       const result = await apiCall('/v1/safe/tx/transfer', {
