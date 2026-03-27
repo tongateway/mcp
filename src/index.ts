@@ -595,39 +595,68 @@ server.tool(
 
 server.tool(
   'dex.create_order',
-  'Place a limit order on the open4dev DEX order book. Both amount and price are human-readable — the API converts to raw units automatically. The order requires wallet approval. Slippage (4% including fees) is applied automatically.',
+  'Place one or more limit orders on the open4dev DEX order book. For a single order, provide fromToken/toToken/amount/price directly. For multiple orders, provide an orders array. All orders are batched into one wallet transaction. Both amount and price are human-readable. Slippage (4% including fees) is applied automatically.',
   {
-    fromToken: z.string().describe('Token to sell, e.g. "NOT", "TON", "USDT"'),
-    toToken: z.string().describe('Token to buy, e.g. "TON", "NOT", "AGNT"'),
-    amount: z.string().describe('Human-readable amount to sell, e.g. "10000" for 10,000 NOT or "5" for 5 USDT'),
-    price: z.number().describe('Human-readable price: how many toToken per 1 fromToken. E.g. price=20 means "1 USDT = 20 AGNT". price=0.000289 means "1 NOT = 0.000289 TON".'),
+    fromToken: z.string().optional().describe('Token to sell (single order), e.g. "NOT", "TON", "USDT"'),
+    toToken: z.string().optional().describe('Token to buy (single order), e.g. "TON", "NOT", "AGNT"'),
+    amount: z.string().optional().describe('Human-readable amount to sell (single order), e.g. "10000"'),
+    price: z.number().optional().describe('Human-readable price (single order): how many toToken per 1 fromToken'),
+    orders: z.array(z.object({
+      fromToken: z.string().describe('Token to sell'),
+      toToken: z.string().describe('Token to buy'),
+      amount: z.string().describe('Human-readable amount to sell'),
+      price: z.number().describe('Human-readable price: how many toToken per 1 fromToken'),
+    })).optional().describe('Array of orders for batch creation. If provided, flat params are ignored.'),
   },
   { title: 'Create DEX Order', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  async ({ fromToken, toToken, amount, price }) => {
+  async ({ fromToken, toToken, amount, price, orders }) => {
     if (!TOKEN) {
       return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
+      // Build request body: batch or single
+      let requestBody: string;
+      if (orders && orders.length > 0) {
+        requestBody = JSON.stringify({ orders });
+      } else if (fromToken && toToken && amount && price) {
+        requestBody = JSON.stringify({ fromToken, toToken, amount, price });
+      } else {
+        return { content: [{ type: 'text' as const, text: 'Provide either orders array or fromToken/toToken/amount/price.' }], isError: true };
+      }
+
       const result = await apiCall('/v1/dex/order', {
         method: 'POST',
-        body: JSON.stringify({ fromToken, toToken, amount, price }),
+        body: requestBody,
       });
 
+      // Format output
+      const orderList = result.orders || [result.swap];
+      const lines: string[] = [];
+
+      if (orderList.length === 1) {
+        const s = orderList[0];
+        lines.push(
+          `Order placed on open4dev DEX!`,
+          ``,
+          `${s.fromToken} → ${s.toToken}`,
+          `Amount: ${s.amount}`,
+          `Price: ${s.price} ${s.toToken} per ${s.fromToken}`,
+          `Slippage: ${s.slippage ?? 4}% (includes fees)`,
+        );
+      } else {
+        lines.push(`${orderList.length} orders placed on open4dev DEX!`, ``);
+        for (let i = 0; i < orderList.length; i++) {
+          const s = orderList[i];
+          lines.push(`Order ${i + 1}: ${s.fromToken} → ${s.toToken} | Amount: ${s.amount} | Price: ${s.price}`);
+        }
+        lines.push(``);
+        lines.push(`Slippage: 4% (includes fees)`);
+      }
+
+      lines.push(`Request ID: ${result.id}`, ``, `Approve in your wallet app.`);
+
       return {
-        content: [{
-          type: 'text' as const,
-          text: [
-            `Order placed on open4dev DEX!`,
-            ``,
-            `${fromToken} → ${toToken}`,
-            `Amount: ${amount}`,
-            `Price: ${price} ${toToken} per ${fromToken}`,
-            `Slippage: ${result.swap?.slippage ?? 4}% (includes fees)`,
-            `Request ID: ${result.id}`,
-            ``,
-            `Approve the order in your wallet app.`,
-          ].join('\n'),
-        }],
+        content: [{ type: 'text' as const, text: lines.join('\n') }],
       };
     } catch (e: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true };
