@@ -1,6 +1,6 @@
 {
   "name": "@tongateway/mcp",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "TON blockchain gateway for AI agents — 16 MCP tools: wallet info, transfers, jettons, NFTs, DNS, prices, DEX orders, agent wallets",
   "homepage": "https://tongateway.ai",
   "license": "MIT",
