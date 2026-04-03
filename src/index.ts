@@ -373,7 +373,7 @@ server.tool(
   'transfer.batch',
   'Send multiple TON transfers in a SINGLE wallet approval. Up to 4 transfers per batch (v4 wallet). All transfers appear as one transaction to sign. Use for batch payments, multi-recipient sends, or multiple DEX orders at once.',
   {
-    transfers: z.string().describe('JSON array of transfers: [{"to":"addr","amountNano":"1000000000","comment":"optional text"},...]'),
+    transfers: z.string().describe('JSON array of transfers: [{"to":"addr","amountNano":"1000000000","comment":"optional text","payload":"base64 BOC"},...]. Use payload for custom BOC (e.g. DEX close order), comment for text messages. payload takes precedence over comment.'),
   },
   { title: 'Batch Transfer', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   async ({ transfers: transfersJson }) => {
@@ -381,15 +381,17 @@ server.tool(
       return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
     try {
-      const transfers = JSON.parse(transfersJson) as Array<{ to: string; amountNano: string; comment?: string }>;
+      const transfers = JSON.parse(transfersJson) as Array<{ to: string; amountNano: string; comment?: string; payload?: string }>;
       if (!transfers.length) throw new Error('No transfers provided');
       if (transfers.length > 4) throw new Error('Max 4 transfers per batch (v4 wallet). Use agent_wallet.batch_transfer for more.');
 
-      // Encode comments as payloads
+      // Encode comments as payloads (payload field takes precedence)
       const processed = [];
       for (const t of transfers) {
         const entry: any = { to: t.to, amountNano: t.amountNano };
-        if (t.comment) {
+        if (t.payload) {
+          entry.payload = t.payload;
+        } else if (t.comment) {
           const { beginCell } = await import('@ton/core');
           const commentCell = beginCell().storeUint(0, 32).storeStringTail(t.comment).endCell();
           entry.payload = commentCell.toBoc().toString('base64');
@@ -415,7 +417,7 @@ server.tool(
             `Total: ${totalTon} TON`,
             `Request ID: ${result.id}`,
             '',
-            ...transfers.map((t, i) => `  ${i + 1}. ${t.amountNano} nanoTON → ${t.to.slice(0, 16)}...${t.comment ? ` "${t.comment}"` : ''}`),
+            ...transfers.map((t, i) => `  ${i + 1}. ${t.amountNano} nanoTON → ${t.to.slice(0, 16)}...${t.payload ? ' [payload]' : t.comment ? ` "${t.comment}"` : ''}`),
             '',
             'Approve in your wallet app — one signature for all transfers.',
           ].join('\n'),
