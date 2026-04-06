@@ -152,6 +152,7 @@ See [SECURITY.md](SECURITY.md) for the full security model.
 
 ## Links
 
+- [tgw CLI](https://github.com/tongateway/cli) — TON blockchain from your terminal (`npm i -g @tongateway/cli`)
 - [tongateway.ai](https://tongateway.ai) — landing page + install guides
 - [Dashboard](https://tongateway.ai/app.html) — connect wallet & manage tokens
 - [API Docs](https://api.tongateway.ai/docs) — Swagger UI
