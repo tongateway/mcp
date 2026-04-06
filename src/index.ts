@@ -597,21 +597,23 @@ server.tool(
 
 server.tool(
   'dex.create_order',
-  'Place one or more limit orders on the open4dev DEX order book. For a single order, provide fromToken/toToken/amount/price directly. For multiple orders, provide an orders array. All orders are batched into one wallet transaction. Both amount and price are human-readable. Slippage (4% including fees) is applied automatically.',
+  'Place one or more limit orders on the open4dev DEX order book. For a single order, provide fromToken/toToken/amount/price directly. For multiple orders, provide an orders array. All orders are batched into one wallet transaction. Both amount and price are human-readable. Slippage defaults to 1% (plus 0.4% fees) if not specified.',
   {
     fromToken: z.string().optional().describe('Token to sell (single order), e.g. "NOT", "TON", "USDT"'),
     toToken: z.string().optional().describe('Token to buy (single order), e.g. "TON", "NOT", "AGNT"'),
     amount: z.string().optional().describe('Human-readable amount to sell (single order), e.g. "10000"'),
     price: z.number().optional().describe('Human-readable price (single order): how many toToken per 1 fromToken'),
+    slippage: z.number().optional().describe('Slippage tolerance in % (single order). Default 1%. Platform fees (0.4%) are added automatically.'),
     orders: z.array(z.object({
       fromToken: z.string().describe('Token to sell'),
       toToken: z.string().describe('Token to buy'),
       amount: z.string().describe('Human-readable amount to sell'),
       price: z.number().describe('Human-readable price: how many toToken per 1 fromToken'),
+      slippage: z.number().optional().describe('Slippage tolerance in % for this order. Default 1%.'),
     })).optional().describe('Array of orders for batch creation. If provided, flat params are ignored.'),
   },
   { title: 'Create DEX Order', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  async ({ fromToken, toToken, amount, price, orders }) => {
+  async ({ fromToken, toToken, amount, price, slippage, orders }) => {
     if (!TOKEN) {
       return { content: [{ type: 'text' as const, text: 'No token configured. Use auth.request first.' }], isError: true };
     }
@@ -621,7 +623,7 @@ server.tool(
       if (orders && orders.length > 0) {
         requestBody = JSON.stringify({ orders });
       } else if (fromToken && toToken && amount && price) {
-        requestBody = JSON.stringify({ fromToken, toToken, amount, price });
+        requestBody = JSON.stringify({ fromToken, toToken, amount, price, ...(slippage !== undefined ? { slippage } : {}) });
       } else {
         return { content: [{ type: 'text' as const, text: 'Provide either orders array or fromToken/toToken/amount/price.' }], isError: true };
       }
@@ -643,7 +645,7 @@ server.tool(
           `${s.fromToken} → ${s.toToken}`,
           `Amount: ${s.amount}`,
           `Price: ${s.price} ${s.toToken} per ${s.fromToken}`,
-          `Slippage: ${s.slippage ?? 4}% (includes fees)`,
+          `Slippage: ${s.slippage ?? 1.4}% (includes fees)`,
         );
       } else {
         lines.push(`${orderList.length} orders placed on open4dev DEX!`, ``);
@@ -652,7 +654,7 @@ server.tool(
           lines.push(`Order ${i + 1}: ${s.fromToken} → ${s.toToken} | Amount: ${s.amount} | Price: ${s.price}`);
         }
         lines.push(``);
-        lines.push(`Slippage: 4% (includes fees)`);
+        lines.push(`Slippage: per-order (includes 0.4% fees)`);
       }
 
       lines.push(`Request ID: ${result.id}`, ``, `Approve in your wallet app.`);
