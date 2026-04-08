@@ -371,7 +371,7 @@ server.tool(
 
 server.tool(
   'transfer.batch',
-  'Send multiple TON transfers in a SINGLE wallet approval. Up to 4 transfers per batch (v4 wallet). All transfers appear as one transaction to sign. Use for batch payments, multi-recipient sends, or multiple DEX orders at once.',
+  'Send multiple TON transfers in a SINGLE wallet approval. Up to 255 transfers per batch. All transfers appear as one transaction to sign. Use for batch payments, multi-recipient sends, or multiple DEX orders at once.',
   {
     transfers: z.string().describe('JSON array of transfers: [{"to":"addr","amountNano":"1000000000","comment":"optional text","payload":"base64 BOC"},...]. Use payload for custom BOC (e.g. DEX close order), comment for text messages. payload takes precedence over comment.'),
   },
@@ -383,7 +383,7 @@ server.tool(
     try {
       const transfers = JSON.parse(transfersJson) as Array<{ to: string; amountNano: string; comment?: string; payload?: string }>;
       if (!transfers.length) throw new Error('No transfers provided');
-      if (transfers.length > 4) throw new Error('Max 4 transfers per batch (v4 wallet). Use agent_wallet.batch_transfer for more.');
+      if (transfers.length > 255) throw new Error('Max 255 transfers per batch.');
 
       // Encode comments as payloads (payload field takes precedence)
       const processed = [];
